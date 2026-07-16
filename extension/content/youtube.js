@@ -338,6 +338,7 @@
 
   let toastTimer = null;
   function showToast(message) {
+    if (!document.body) return; // document_start — too early to render
     let toast = document.querySelector(".asb-toast");
     if (!toast) {
       toast = document.createElement("div");
@@ -356,8 +357,8 @@
   // Watch-page enforcement: what happens when a blocked video is opened.
   // -------------------------------------------------------------------------
 
-  let enforcedVideoId = null; // guards against re-triggering on every mutation
-  let overlayActive = false;
+  let enforcedVideoId = null; // the chosen action has FIRED for this video
+  let watchBlocked = false; // current watch video is blocked (play-guard flag)
   let overlayEl = null;
 
   function pauseVideo() {
@@ -365,37 +366,59 @@
   }
 
   function enforceWatchBlock() {
-    if (!state.enabled || location.pathname !== "/watch") return;
+    if (!state.enabled) return;
+    if (location.pathname !== "/watch") {
+      watchBlocked = false;
+      return;
+    }
     const info = watchPageInfo();
     if (!info.videoId) return;
 
     if (!isBlocked(info)) {
+      watchBlocked = false;
       clearWatchOverlay();
       enforcedVideoId = null;
       return;
     }
-    if (enforcedVideoId === info.videoId) return;
-    enforcedVideoId = info.videoId;
 
+    // Contain immediately, before (and independently of) the chosen action:
+    // the play-guard in init() now keeps this video paused no matter how
+    // often YouTube tries to start it.
+    watchBlocked = true;
+    pauseVideo();
+
+    if (enforcedVideoId === info.videoId) return;
+
+    // enforcedVideoId is only set once the action actually fires — the next
+    // button / sidebar render async, so failed attempts retry on every scan
+    // (with the overlay holding the fort in between) instead of giving up.
     switch (state.watchAction) {
       case "redirect":
+        enforcedVideoId = info.videoId;
         // Full navigation — flag survives it so the fresh content script can
         // explain why the user landed on the homepage.
         try { sessionStorage.setItem("asb-redirected", "1"); } catch { /* blocked storage */ }
         location.href = "https://www.youtube.com/";
         break;
       case "next": {
-        pauseVideo();
-        const nextBtn = document.querySelector(".ytp-next-button");
-        if (nextBtn) nextBtn.click();
-        else if (!playFirstSidebar()) showWatchOverlay();
+        showWatchOverlay("Skipping to the next video…");
+        // The next button is an <a>; clicking it triggers YouTube's SPA
+        // router. Its href is only set once player data has loaded.
+        const nextBtn = document.querySelector("a.ytp-next-button");
+        if (nextBtn?.getAttribute("href")) {
+          enforcedVideoId = info.videoId;
+          nextBtn.click();
+        } else if (playFirstSidebar()) {
+          enforcedVideoId = info.videoId;
+        }
         break;
       }
       case "sidebar":
-        pauseVideo();
-        if (!playFirstSidebar()) showWatchOverlay();
+        showWatchOverlay("Skipping to a recommended video…");
+        if (playFirstSidebar()) enforcedVideoId = info.videoId;
         break;
       default: // "overlay"
+        enforcedVideoId = info.videoId;
         showWatchOverlay();
     }
   }
@@ -416,9 +439,8 @@
     return false;
   }
 
-  function showWatchOverlay() {
+  function showWatchOverlay(subText) {
     pauseVideo();
-    overlayActive = true; // the play-guard in init() keeps it paused
     if (overlayEl?.isConnected) return;
 
     const player = document.querySelector("#movie_player");
@@ -434,13 +456,12 @@
     title.textContent = "Blocked because of AI Slop";
     const sub = document.createElement("div");
     sub.className = "asb-overlay-sub";
-    sub.textContent = "This video or its channel is on your block list.";
+    sub.textContent = subText || "This video or its channel is on your block list.";
     overlayEl.append(emoji, title, sub);
     player.appendChild(overlayEl);
   }
 
   function clearWatchOverlay() {
-    overlayActive = false;
     overlayEl?.remove();
     overlayEl = null;
   }
@@ -490,25 +511,30 @@
     window.addEventListener("yt-navigate-finish", () => {
       closeMenu();
       clearWatchOverlay();
+      watchBlocked = false;
       enforcedVideoId = null;
       processAll();
     });
 
-    // Keeps a blocked video paused while the overlay is up. Media "play"
+    // Keeps a blocked video paused the instant anything tries to play it —
+    // this is what stops the "plays for a split second" flash. Media "play"
     // events don't bubble, but a capturing listener on document still fires.
     document.addEventListener(
       "play",
       (e) => {
-        if (overlayActive && e.target instanceof HTMLVideoElement) e.target.pause();
+        if (watchBlocked && e.target instanceof HTMLVideoElement) e.target.pause();
       },
       true
     );
 
     // Landing here from a "redirect" enforcement — explain what happened.
+    // (We run at document_start now, so body may not exist yet.)
     try {
       if (sessionStorage.getItem("asb-redirected")) {
         sessionStorage.removeItem("asb-redirected");
-        showToast("Redirected — that video was AI slop 🤖");
+        const notify = () => showToast("Redirected — that video was AI slop 🤖");
+        if (document.body) notify();
+        else document.addEventListener("DOMContentLoaded", notify, { once: true });
       }
     } catch { /* sessionStorage unavailable */ }
 
@@ -528,6 +554,7 @@
     } else {
       unhideAll();
       clearWatchOverlay();
+      watchBlocked = false;
       enforcedVideoId = null;
     }
   }

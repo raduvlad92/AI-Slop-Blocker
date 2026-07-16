@@ -28,7 +28,7 @@
       "matches": ["*://*.youtube.com/*"],
       "js": ["content/common.js", "content/youtube.js"],
       "css": ["content/youtube.css"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
 
