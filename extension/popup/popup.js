@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  settings: { hideAIOverview: true, hideYouTube: true },
+  settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: false },
   blockedCount: 0,
 };
 
@@ -13,8 +13,11 @@ async function render() {
 }
 
 async function saveSettings() {
+  // Merge over stored settings — the popup doesn't own showCardButtons.
+  const { settings } = await chrome.storage.local.get({ settings: DEFAULTS.settings });
   await chrome.storage.local.set({
     settings: {
+      ...settings,
       hideAIOverview: $("toggle-google").checked,
       hideYouTube: $("toggle-youtube").checked,
     },

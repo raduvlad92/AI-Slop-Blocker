@@ -17,6 +17,7 @@ const SYNC_ALARM = "asb-blocklist-sync";
 const DEFAULT_SETTINGS = {
   hideAIOverview: true,
   hideYouTube: true,
+  showCardButtons: false, // thumbnail-overlay buttons are opt-in
 };
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // Options page logic — vanilla JS, reads/writes chrome.storage.local directly.
 
 const DEFAULTS = {
-  settings: { hideAIOverview: true, hideYouTube: true },
+  settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: false },
   personal: { videos: {}, channels: {} },
   community: { videos: [], channels: [], syncedAt: 0 },
   blockedCount: 0,
@@ -15,6 +15,7 @@ async function render() {
   $("counter").textContent = data.blockedCount.toLocaleString();
   $("toggle-google").checked = data.settings.hideAIOverview;
   $("toggle-youtube").checked = data.settings.hideYouTube;
+  $("toggle-card-buttons").checked = !!data.settings.showCardButtons;
 
   renderList(
     $("my-channels"),
@@ -78,11 +79,16 @@ function renderList(listEl, countEl, entries, labelFn, storageKey) {
 
 $("toggle-google").addEventListener("change", saveSettings);
 $("toggle-youtube").addEventListener("change", saveSettings);
+$("toggle-card-buttons").addEventListener("change", saveSettings);
 async function saveSettings() {
+  // Merge over stored settings so keys managed elsewhere aren't clobbered.
+  const { settings } = await chrome.storage.local.get({ settings: DEFAULTS.settings });
   await chrome.storage.local.set({
     settings: {
+      ...settings,
       hideAIOverview: $("toggle-google").checked,
       hideYouTube: $("toggle-youtube").checked,
+      showCardButtons: $("toggle-card-buttons").checked,
     },
   });
 }

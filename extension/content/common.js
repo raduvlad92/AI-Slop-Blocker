@@ -3,7 +3,9 @@
 
 const ASB = {
   DEFAULTS: {
-    settings: { hideAIOverview: true, hideYouTube: true },
+    // showCardButtons: overlay button on video thumbnails — opt-in; by
+    // default the block button only appears on the currently playing video.
+    settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: false },
     personal: { videos: {}, channels: {} },
     community: { videos: [], channels: [], syncedAt: 0 },
     blockedCount: 0,

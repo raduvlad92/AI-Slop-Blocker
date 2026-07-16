@@ -41,8 +41,11 @@ and the only thing ever sent anywhere is an anonymous
 1. `chrome://extensions` → enable Developer mode → **Load unpacked** →
    select the `extension/` folder.
 2. Search anything on Google → the AI Overview box is gone.
-3. Open YouTube, hover a thumbnail → click **🤖 AI Slop** → pick "Block this
-   video" or "Block channel". The card vanishes and the counter ticks up.
+3. Open any YouTube video → click **🤖 AI Slop** next to the channel row under
+   the player → pick "Block this video" or "Block channel". Blocked videos
+   vanish from feeds/search/sidebar and the counter ticks up. To also get the
+   overlay button on every thumbnail, enable "Show block button on thumbnails"
+   in settings (off by default).
 4. The popup / options page (right-click the extension icon → Options) has the
    toggles, both block lists, and your slop counter.
 

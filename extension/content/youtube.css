@@ -29,9 +29,43 @@ a:hover > .asb-btn,
   opacity: 1;
 }
 
+/* Watch page: inline pill in the owner row, next to Subscribe. Always shown
+   (when the YouTube feature is on) — this is the default blocking surface. */
+.asb-btn-watch {
+  align-self: center;
+  flex: none;
+  margin-left: 8px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+  font: 500 13px/1.4 "Roboto", "Arial", sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+.asb-btn-watch:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+html[dark] .asb-btn-watch {
+  background: rgba(255, 255, 255, 0.1);
+}
+html[dark] .asb-btn-watch:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 /* Turned off from settings: keep buttons out of the way entirely. */
 .asb-off .asb-btn,
+.asb-off .asb-btn-watch,
 .asb-off .asb-menu {
+  display: none !important;
+}
+
+/* Thumbnail-overlay buttons are opt-in ("Show block button on thumbnails"
+   setting, off by default) — only the watch-page button shows otherwise. */
+.asb-cards-off .asb-btn {
   display: none !important;
 }
 
@@ -64,6 +98,13 @@ a:hover > .asb-btn,
 }
 .asb-menu button:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* Variant for the watch-page owner row: drop below the button instead of
+   overlaying the row. */
+.asb-menu--below {
+  top: calc(100% + 6px);
+  right: 0;
 }
 
 /* Toast: bottom-center, small pop, auto-dismisses. */

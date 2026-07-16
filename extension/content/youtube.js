@@ -23,6 +23,7 @@
 
   const state = {
     enabled: true,
+    showCardButtons: false,
     blockedCount: 0,
     personalVideos: new Set(),
     personalChannels: new Set(),
@@ -32,6 +33,7 @@
 
   function refreshSets(data) {
     state.enabled = data.settings.hideYouTube;
+    state.showCardButtons = !!data.settings.showCardButtons;
     state.blockedCount = data.blockedCount;
     state.personalVideos = new Set(Object.keys(data.personal.videos));
     state.personalChannels = new Set(Object.keys(data.personal.channels));
@@ -43,13 +45,10 @@
   // Card introspection
   // -------------------------------------------------------------------------
 
+  // NOTE: no caching here — YouTube recycles card elements across SPA
+  // navigations (same DOM node, new hrefs), so info must be re-extracted
+  // every time, especially at click time.
   function extractInfo(card) {
-    // Cache on the element — cards are re-scanned on every mutation pass and
-    // their links don't change.
-    if (card.dataset.asbInfo) {
-      try { return JSON.parse(card.dataset.asbInfo); } catch { /* re-extract */ }
-    }
-
     const info = { videoId: null, channelId: null, channelName: null };
 
     const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
@@ -81,8 +80,29 @@
     if (!info.channelName && info.channelId?.startsWith("@")) {
       info.channelName = info.channelId;
     }
+    return info;
+  }
 
-    if (info.videoId) card.dataset.asbInfo = JSON.stringify(info);
+  // The main video on a watch page isn't a card — its identity comes from the
+  // URL and the owner row under the player.
+  function watchPageInfo() {
+    const info = { videoId: null, channelId: null, channelName: null };
+    info.videoId = new URLSearchParams(location.search).get("v");
+
+    const chLink = document.querySelector(
+      'ytd-watch-metadata #owner a[href^="/channel/"], ytd-watch-metadata #owner a[href^="/@"]'
+    );
+    if (chLink) {
+      const path = chLink.getAttribute("href") || "";
+      if (path.startsWith("/channel/")) info.channelId = path.split("/")[2] || null;
+      else if (path.startsWith("/@")) info.channelId = path.split("/")[1] || null;
+    }
+
+    const nameEl = document.querySelector("ytd-watch-metadata #owner ytd-channel-name a");
+    if (nameEl) info.channelName = nameEl.textContent.trim().slice(0, 100) || null;
+    if (!info.channelName && info.channelId?.startsWith("@")) {
+      info.channelName = info.channelId;
+    }
     return info;
   }
 
@@ -108,7 +128,25 @@
     return thumb;
   }
 
-  function injectButton(card, info) {
+  function makeButton(className, onClick) {
+    const btn = document.createElement("button");
+    btn.className = className;
+    btn.type = "button";
+    btn.title = "Mark as AI slop";
+    btn.textContent = "🤖 AI Slop";
+    btn.addEventListener(
+      "click",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      },
+      { capture: true }
+    );
+    return btn;
+  }
+
+  function injectButton(card) {
     if (card.dataset.asbBtn) return;
     const thumb = findThumb(card);
     if (!thumb) return;
@@ -118,21 +156,26 @@
       thumb.style.position = "relative";
     }
 
-    const btn = document.createElement("button");
-    btn.className = "asb-btn";
-    btn.type = "button";
-    btn.title = "Mark as AI slop";
-    btn.textContent = "🤖 AI Slop";
-    btn.addEventListener(
-      "click",
-      (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openMenu(card, thumb, info);
-      },
-      { capture: true }
+    // Info is extracted at click time — the card element may have been
+    // recycled for a different video since injection.
+    thumb.appendChild(
+      makeButton("asb-btn", () => openMenu(card, thumb, extractInfo(card)))
     );
-    thumb.appendChild(btn);
+  }
+
+  // Watch page: inline button in the owner row (next to Subscribe) so the
+  // currently playing video/channel can be blocked too.
+  function injectWatchButton() {
+    if (location.pathname !== "/watch") return;
+    const owner = document.querySelector("ytd-watch-metadata #owner");
+    if (!owner || owner.querySelector(".asb-btn-watch")) return;
+
+    if (getComputedStyle(owner).position === "static") {
+      owner.style.position = "relative";
+    }
+    owner.appendChild(
+      makeButton("asb-btn-watch", () => openMenu(null, owner, watchPageInfo(), true))
+    );
   }
 
   let openMenuEl = null;
@@ -142,10 +185,10 @@
   }
   document.addEventListener("click", closeMenu, { capture: true });
 
-  function openMenu(card, thumb, info) {
+  function openMenu(card, container, info, below = false) {
     closeMenu();
     const menu = document.createElement("div");
-    menu.className = "asb-menu";
+    menu.className = below ? "asb-menu asb-menu--below" : "asb-menu";
 
     const addItem = (label, scope) => {
       const item = document.createElement("button");
@@ -171,7 +214,7 @@
     if (!menu.children.length) return; // couldn't identify the card — do nothing
 
     menu.addEventListener("click", (e) => e.stopPropagation(), { capture: true });
-    thumb.appendChild(menu);
+    container.appendChild(menu);
     openMenuEl = menu;
   }
 
@@ -181,7 +224,9 @@
 
   async function block(scope, info, card) {
     // 1. Instant local feedback — hide before any storage/network work.
-    hideCard(card);
+    // (card is null when blocking from the watch page — the playing video
+    // isn't hidden, but it's list-blocked everywhere it appears from now on.)
+    if (card) hideCard(card);
 
     // 2. Persist to the local block list + bump the counter.
     const data = await ASB.getState();
@@ -259,9 +304,12 @@
           hideCard(card);
         } else {
           card.classList.remove("asb-hidden");
-          injectButton(card, info);
+          // Buttons are still injected while hidden by CSS so flipping the
+          // setting on takes effect without a rescan.
+          injectButton(card);
         }
       });
+      injectWatchButton();
     } catch { /* never break YouTube */ }
   }
 
@@ -297,6 +345,7 @@
 
   function applyEnabled() {
     document.documentElement.classList.toggle("asb-off", !state.enabled);
+    document.documentElement.classList.toggle("asb-cards-off", !state.showCardButtons);
     if (state.enabled) processAll();
     else unhideAll();
   }
