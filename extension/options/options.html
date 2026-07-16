@@ -41,6 +41,26 @@
         </span>
         <input type="checkbox" id="toggle-card-buttons" />
       </label>
+
+      <div class="radio-group">
+        <p class="group-label">When you open a blocked video:</p>
+        <label class="radio-row">
+          <input type="radio" name="watchAction" value="overlay" />
+          <span>Don't play it — show a "Blocked because of AI Slop" overlay <small>(default)</small></span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="watchAction" value="redirect" />
+          <span>Redirect to the YouTube homepage</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="watchAction" value="next" />
+          <span>Skip to the next video</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="watchAction" value="sidebar" />
+          <span>Play the top video from the sidebar</span>
+        </label>
+      </div>
     </section>
 
     <section class="card">

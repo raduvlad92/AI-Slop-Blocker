@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   hideAIOverview: true,
   hideYouTube: true,
   showCardButtons: false, // thumbnail-overlay buttons are opt-in
+  watchAction: "overlay", // what to do when a blocked video is opened
 };
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,12 @@
 // Options page logic — vanilla JS, reads/writes chrome.storage.local directly.
 
 const DEFAULTS = {
-  settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: false },
+  settings: {
+    hideAIOverview: true,
+    hideYouTube: true,
+    showCardButtons: false,
+    watchAction: "overlay",
+  },
   personal: { videos: {}, channels: {} },
   community: { videos: [], channels: [], syncedAt: 0 },
   blockedCount: 0,
@@ -16,6 +21,9 @@ async function render() {
   $("toggle-google").checked = data.settings.hideAIOverview;
   $("toggle-youtube").checked = data.settings.hideYouTube;
   $("toggle-card-buttons").checked = !!data.settings.showCardButtons;
+  const action = data.settings.watchAction || "overlay";
+  const radio = document.querySelector(`input[name="watchAction"][value="${action}"]`);
+  if (radio) radio.checked = true;
 
   renderList(
     $("my-channels"),
@@ -80,6 +88,9 @@ function renderList(listEl, countEl, entries, labelFn, storageKey) {
 $("toggle-google").addEventListener("change", saveSettings);
 $("toggle-youtube").addEventListener("change", saveSettings);
 $("toggle-card-buttons").addEventListener("change", saveSettings);
+document
+  .querySelectorAll('input[name="watchAction"]')
+  .forEach((r) => r.addEventListener("change", saveSettings));
 async function saveSettings() {
   // Merge over stored settings so keys managed elsewhere aren't clobbered.
   const { settings } = await chrome.storage.local.get({ settings: DEFAULTS.settings });
@@ -89,6 +100,8 @@ async function saveSettings() {
       hideAIOverview: $("toggle-google").checked,
       hideYouTube: $("toggle-youtube").checked,
       showCardButtons: $("toggle-card-buttons").checked,
+      watchAction:
+        document.querySelector('input[name="watchAction"]:checked')?.value || "overlay",
     },
   });
 }

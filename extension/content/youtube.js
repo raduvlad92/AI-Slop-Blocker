@@ -24,6 +24,7 @@
   const state = {
     enabled: true,
     showCardButtons: false,
+    watchAction: "overlay",
     blockedCount: 0,
     personalVideos: new Set(),
     personalChannels: new Set(),
@@ -34,6 +35,7 @@
   function refreshSets(data) {
     state.enabled = data.settings.hideYouTube;
     state.showCardButtons = !!data.settings.showCardButtons;
+    state.watchAction = data.settings.watchAction || "overlay";
     state.blockedCount = data.blockedCount;
     state.personalVideos = new Set(Object.keys(data.personal.videos));
     state.personalChannels = new Set(Object.keys(data.personal.channels));
@@ -305,7 +307,8 @@
     processAll(); // channel blocks should sweep the rest of the page too
 
     // 3. Satisfying toast with the running counter.
-    showToast(data.blockedCount);
+    const n = data.blockedCount;
+    showToast(`Blocked. You've hidden ${n} AI ${n === 1 ? "video" : "videos"} 🎉`);
 
     // 4. Fire-and-forget submission to the backend (relayed via background).
     try {
@@ -334,19 +337,112 @@
   // -------------------------------------------------------------------------
 
   let toastTimer = null;
-  function showToast(count) {
+  function showToast(message) {
     let toast = document.querySelector(".asb-toast");
     if (!toast) {
       toast = document.createElement("div");
       toast.className = "asb-toast";
       document.body.appendChild(toast);
     }
-    toast.textContent = `Blocked. You've hidden ${count} AI ${count === 1 ? "video" : "videos"} 🎉`;
+    toast.textContent = message;
     toast.classList.remove("asb-toast-show");
     void toast.offsetWidth; // restart the pop animation on rapid blocks
     toast.classList.add("asb-toast-show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove("asb-toast-show"), 2500);
+  }
+
+  // -------------------------------------------------------------------------
+  // Watch-page enforcement: what happens when a blocked video is opened.
+  // -------------------------------------------------------------------------
+
+  let enforcedVideoId = null; // guards against re-triggering on every mutation
+  let overlayActive = false;
+  let overlayEl = null;
+
+  function pauseVideo() {
+    document.querySelector("video.html5-main-video")?.pause();
+  }
+
+  function enforceWatchBlock() {
+    if (!state.enabled || location.pathname !== "/watch") return;
+    const info = watchPageInfo();
+    if (!info.videoId) return;
+
+    if (!isBlocked(info)) {
+      clearWatchOverlay();
+      enforcedVideoId = null;
+      return;
+    }
+    if (enforcedVideoId === info.videoId) return;
+    enforcedVideoId = info.videoId;
+
+    switch (state.watchAction) {
+      case "redirect":
+        // Full navigation — flag survives it so the fresh content script can
+        // explain why the user landed on the homepage.
+        try { sessionStorage.setItem("asb-redirected", "1"); } catch { /* blocked storage */ }
+        location.href = "https://www.youtube.com/";
+        break;
+      case "next": {
+        pauseVideo();
+        const nextBtn = document.querySelector(".ytp-next-button");
+        if (nextBtn) nextBtn.click();
+        else if (!playFirstSidebar()) showWatchOverlay();
+        break;
+      }
+      case "sidebar":
+        pauseVideo();
+        if (!playFirstSidebar()) showWatchOverlay();
+        break;
+      default: // "overlay"
+        showWatchOverlay();
+    }
+  }
+
+  // Click the first sidebar recommendation that isn't itself blocked.
+  function playFirstSidebar() {
+    const cards = document.querySelectorAll(
+      "#secondary ytd-compact-video-renderer, #secondary yt-lockup-view-model"
+    );
+    for (const card of cards) {
+      if (card.classList.contains("asb-hidden")) continue;
+      const link = card.querySelector('a[href*="/watch?v="]');
+      if (link) {
+        link.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function showWatchOverlay() {
+    pauseVideo();
+    overlayActive = true; // the play-guard in init() keeps it paused
+    if (overlayEl?.isConnected) return;
+
+    const player = document.querySelector("#movie_player");
+    if (!player) return;
+
+    overlayEl = document.createElement("div");
+    overlayEl.className = "asb-player-overlay";
+    const emoji = document.createElement("div");
+    emoji.className = "asb-overlay-emoji";
+    emoji.textContent = "🤖🚫";
+    const title = document.createElement("div");
+    title.className = "asb-overlay-title";
+    title.textContent = "Blocked because of AI Slop";
+    const sub = document.createElement("div");
+    sub.className = "asb-overlay-sub";
+    sub.textContent = "This video or its channel is on your block list.";
+    overlayEl.append(emoji, title, sub);
+    player.appendChild(overlayEl);
+  }
+
+  function clearWatchOverlay() {
+    overlayActive = false;
+    overlayEl?.remove();
+    overlayEl = null;
   }
 
   // -------------------------------------------------------------------------
@@ -369,6 +465,7 @@
         }
       });
       injectWatchButton();
+      enforceWatchBlock();
     } catch { /* never break YouTube */ }
   }
 
@@ -392,8 +489,29 @@
     // SPA navigation: YouTube swaps content without a page load.
     window.addEventListener("yt-navigate-finish", () => {
       closeMenu();
+      clearWatchOverlay();
+      enforcedVideoId = null;
       processAll();
     });
+
+    // Keeps a blocked video paused while the overlay is up. Media "play"
+    // events don't bubble, but a capturing listener on document still fires.
+    document.addEventListener(
+      "play",
+      (e) => {
+        if (overlayActive && e.target instanceof HTMLVideoElement) e.target.pause();
+      },
+      true
+    );
+
+    // Landing here from a "redirect" enforcement — explain what happened.
+    try {
+      if (sessionStorage.getItem("asb-redirected")) {
+        sessionStorage.removeItem("asb-redirected");
+        showToast("Redirected — that video was AI slop 🤖");
+      }
+    } catch { /* sessionStorage unavailable */ }
+
     processAll();
 
     ASB.onStateChange(async () => {
@@ -405,8 +523,13 @@
   function applyEnabled() {
     document.documentElement.classList.toggle("asb-off", !state.enabled);
     document.documentElement.classList.toggle("asb-cards-off", !state.showCardButtons);
-    if (state.enabled) processAll();
-    else unhideAll();
+    if (state.enabled) {
+      processAll();
+    } else {
+      unhideAll();
+      clearWatchOverlay();
+      enforcedVideoId = null;
+    }
   }
 
   init();
