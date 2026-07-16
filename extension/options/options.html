@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Slop Blocker — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>🤖🚫 AI Slop Blocker</h1>
+    </header>
+
+    <!-- The shareable stat — visual centerpiece -->
+    <section class="counter-card">
+      <div class="counter" id="counter">0</div>
+      <div class="counter-label">pieces of AI slop blocked</div>
+    </section>
+
+    <section class="card">
+      <h2>Filters</h2>
+      <label class="toggle-row">
+        <span>
+          <strong>Hide Google AI Overview</strong>
+          <small>Removes the AI-generated answer box on Google Search</small>
+        </span>
+        <input type="checkbox" id="toggle-google" />
+      </label>
+      <label class="toggle-row">
+        <span>
+          <strong>Hide AI YouTube videos</strong>
+          <small>Adds the 🤖 AI Slop button and hides blocked videos</small>
+        </span>
+        <input type="checkbox" id="toggle-youtube" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>My block list</h2>
+      <p class="muted">Videos and channels you've blocked. Stored only on this device.</p>
+      <h3>Channels <span class="count" id="my-channels-count"></span></h3>
+      <ul class="block-list" id="my-channels"></ul>
+      <h3>Videos <span class="count" id="my-videos-count"></span></h3>
+      <ul class="block-list" id="my-videos"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Community block list</h2>
+      <p class="muted">
+        Curated from everyone's submissions, synced from GitHub. Read-only.
+      </p>
+      <div class="community-stats">
+        <span id="community-summary">—</span>
+        <button id="sync-now" type="button">Sync now</button>
+      </div>
+      <p class="muted" id="last-synced"></p>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

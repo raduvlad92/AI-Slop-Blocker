@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "AI Slop Blocker",
+  "version": "0.1.0",
+  "description": "Hide Google's AI Overview and block AI slop videos on YouTube. Free, local-first, community blocklist.",
+
+  "permissions": ["storage", "alarms"],
+
+  "host_permissions": [
+    "*://*.google.com/search*",
+    "*://*.youtube.com/*",
+    "https://raw.githubusercontent.com/*",
+    "https://aislopblocker-api.YOUR-SUBDOMAIN.workers.dev/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://*.google.com/search*"],
+      "js": ["content/common.js", "content/google.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/common.js", "content/youtube.js"],
+      "css": ["content/youtube.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "options_page": "options/options.html",
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "AI Slop Blocker"
+  }
+}

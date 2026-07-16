@@ -1,0 +1,48 @@
+name: Validate blocklist JSON
+
+on:
+  pull_request:
+    paths:
+      - "blocklist/*.json"
+  push:
+    branches: [main]
+    paths:
+      - "blocklist/*.json"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate structure
+        run: |
+          node -e '
+            const fs = require("fs");
+            const RES = {
+              "blocklist/videos.json": /^[A-Za-z0-9_-]{11}$/,
+              "blocklist/channels.json": /^(UC[A-Za-z0-9_-]{22}|@[A-Za-z0-9._-]{1,50})$/,
+            };
+            let failed = false;
+            for (const [file, re] of Object.entries(RES)) {
+              const data = JSON.parse(fs.readFileSync(file, "utf8"));
+              if (!Array.isArray(data)) {
+                console.error(`${file}: must be a flat JSON array`);
+                failed = true;
+                continue;
+              }
+              const seen = new Set();
+              for (const id of data) {
+                if (typeof id !== "string" || !re.test(id)) {
+                  console.error(`${file}: invalid entry ${JSON.stringify(id)}`);
+                  failed = true;
+                }
+                if (seen.has(id)) {
+                  console.error(`${file}: duplicate entry ${id}`);
+                  failed = true;
+                }
+                seen.add(id);
+              }
+              console.log(`${file}: ${data.length} entries`);
+            }
+            process.exit(failed ? 1 : 0);
+          '

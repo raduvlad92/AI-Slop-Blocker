@@ -1,0 +1,114 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1a1c1f;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #e11d48;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101214;
+    --card: #1a1d21;
+    --text: #eceef0;
+    --muted: #9aa1a9;
+    --border: #2b2f34;
+    --accent: #fb7185;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 { font-size: 20px; margin: 0 0 16px; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+h3 { font-size: 13px; margin: 16px 0 6px; }
+
+.card,
+.counter-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* Counter — the centerpiece */
+.counter-card { text-align: center; padding: 28px 16px; }
+.counter {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.counter-label { color: var(--muted); margin-top: 4px; }
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.toggle-row + .toggle-row { border-top: 1px solid var(--border); }
+.toggle-row small { display: block; color: var(--muted); }
+.toggle-row input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+
+.muted { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.count { color: var(--muted); font-weight: 400; }
+
+.block-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.block-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.block-list li:last-child { border-bottom: none; }
+.block-list .id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
+.block-list .empty { color: var(--muted); border: none; }
+
+button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+
+.remove-btn { padding: 2px 8px; font-size: 12px; flex: none; }
+
+.community-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}

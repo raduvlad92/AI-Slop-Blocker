@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AI Slop Blocker</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="counter" id="counter">0</div>
+  <div class="counter-label">pieces of AI slop blocked</div>
+
+  <label class="toggle-row">
+    <span>Hide Google AI Overview</span>
+    <input type="checkbox" id="toggle-google" />
+  </label>
+  <label class="toggle-row">
+    <span>Hide AI YouTube videos</span>
+    <input type="checkbox" id="toggle-youtube" />
+  </label>
+
+  <button id="open-options" type="button">Manage block lists →</button>
+  <script src="popup.js"></script>
+</body>
+</html>
