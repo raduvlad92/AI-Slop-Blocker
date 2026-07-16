@@ -35,8 +35,37 @@ body {
 .counter-label {
   text-align: center;
   color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.stat-pills {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
   margin-bottom: 14px;
 }
+.pill {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.radio-group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.group-label { margin: 0 0 4px; font-weight: 600; }
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.radio-row input { accent-color: var(--accent); }
 
 .toggle-row {
   display: flex;

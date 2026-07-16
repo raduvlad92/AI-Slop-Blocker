@@ -64,6 +64,20 @@
     </section>
 
     <section class="card">
+      <h2>Stats</h2>
+      <h3>Last 14 days</h3>
+      <table class="stats-table">
+        <thead>
+          <tr><th>Day</th><th>Videos</th><th>AI Overviews</th><th>Time saved</th></tr>
+        </thead>
+        <tbody id="daily-stats"></tbody>
+      </table>
+      <h3>By hour of day</h3>
+      <div class="hour-chart" id="hour-chart"></div>
+      <p class="muted">Time saved is estimated from the blocked video's length (~8 min when unknown).</p>
+    </section>
+
+    <section class="card">
       <h2>My block list</h2>
       <p class="muted">Videos and channels you've blocked. Stored only on this device.</p>
       <h3>Channels <span class="count" id="my-channels-count"></span></h3>

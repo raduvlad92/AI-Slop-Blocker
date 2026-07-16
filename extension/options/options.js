@@ -10,6 +10,7 @@ const DEFAULTS = {
   personal: { videos: {}, channels: {} },
   community: { videos: [], channels: [], syncedAt: 0 },
   blockedCount: 0,
+  events: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,8 @@ async function render() {
     (id, meta) => (meta.channelName ? `${id} — ${meta.channelName}` : id),
     "videos"
   );
+
+  renderStats(data.events);
 
   const { videos, channels, syncedAt } = data.community;
   $("community-summary").textContent =
@@ -83,6 +86,61 @@ function renderList(listEl, countEl, entries, labelFn, storageKey) {
     li.append(label, btn);
     listEl.appendChild(li);
   }
+}
+
+function formatMinutes(mins) {
+  if (!mins) return "—";
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+function renderStats(events) {
+  // Daily table, last 14 days (today first), zero days included.
+  const tbody = $("daily-stats");
+  tbody.textContent = "";
+  for (let i = 0; i < 14; i++) {
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() - i);
+    const next = day.getTime() + 864e5;
+    const dayEvents = events.filter((e) => e.t >= day.getTime() && e.t < next);
+    const videos = dayEvents.filter((e) => e.kind === "video");
+    const overviews = dayEvents.length - videos.length;
+    const mins = videos.reduce((s, e) => s + (e.mins || 8), 0);
+
+    const tr = document.createElement("tr");
+    const label =
+      i === 0 ? "Today" : i === 1 ? "Yesterday"
+      : day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    for (const text of [label, videos.length || "—", overviews || "—", formatMinutes(mins)]) {
+      const td = document.createElement("td");
+      td.textContent = String(text);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+
+  // Hour-of-day histogram over the whole log.
+  const byHour = new Array(24).fill(0);
+  for (const e of events) byHour[new Date(e.t).getHours()]++;
+  const max = Math.max(1, ...byHour);
+  const chart = $("hour-chart");
+  chart.textContent = "";
+  byHour.forEach((count, hour) => {
+    const col = document.createElement("div");
+    col.className = "hour-col";
+    col.title = `${String(hour).padStart(2, "0")}:00 — ${count} blocked`;
+    const bar = document.createElement("div");
+    bar.className = "hour-bar";
+    bar.style.height = `${Math.round((count / max) * 100)}%`;
+    const label = document.createElement("span");
+    label.className = "hour-label";
+    label.textContent = hour % 6 === 0 ? String(hour) : "";
+    col.append(bar, label);
+    chart.appendChild(col);
+  });
 }
 
 $("toggle-google").addEventListener("change", saveSettings);

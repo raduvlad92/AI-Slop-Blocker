@@ -9,6 +9,11 @@
   <div class="counter" id="counter">0</div>
   <div class="counter-label">pieces of AI slop blocked</div>
 
+  <div class="stat-pills">
+    <span class="pill" id="today-pill">0 today</span>
+    <span class="pill" id="brainrot-pill">🧠 0 min saved</span>
+  </div>
+
   <label class="toggle-row">
     <span>Hide Google AI Overview</span>
     <input type="checkbox" id="toggle-google" />
@@ -17,6 +22,26 @@
     <span>Hide AI YouTube videos</span>
     <input type="checkbox" id="toggle-youtube" />
   </label>
+
+  <div class="radio-group">
+    <p class="group-label">When you open a blocked video:</p>
+    <label class="radio-row">
+      <input type="radio" name="watchAction" value="overlay" />
+      <span>Show "Blocked" overlay</span>
+    </label>
+    <label class="radio-row">
+      <input type="radio" name="watchAction" value="redirect" />
+      <span>Redirect to homepage</span>
+    </label>
+    <label class="radio-row">
+      <input type="radio" name="watchAction" value="next" />
+      <span>Skip to next video</span>
+    </label>
+    <label class="radio-row">
+      <input type="radio" name="watchAction" value="sidebar" />
+      <span>Play top sidebar video</span>
+    </label>
+  </div>
 
   <button id="open-options" type="button">Manage block lists →</button>
   <script src="popup.js"></script>

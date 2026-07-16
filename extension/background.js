@@ -13,6 +13,7 @@ import {
 } from "./config.js";
 
 const SYNC_ALARM = "asb-blocklist-sync";
+const BADGE_ALARM = "asb-badge-refresh"; // rolls the badge over at day change
 
 const DEFAULT_SETTINGS = {
   hideAIOverview: true,
@@ -38,7 +39,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_INTERVAL_MINUTES });
+  chrome.alarms.create(BADGE_ALARM, { periodInMinutes: 30 });
   syncCommunityBlocklist();
+  updateBadge();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -46,10 +49,31 @@ chrome.runtime.onStartup.addListener(async () => {
   const { community } = await chrome.storage.local.get("community");
   const age = Date.now() - (community?.syncedAt || 0);
   if (age > SYNC_INTERVAL_MINUTES * 60 * 1000) syncCommunityBlocklist();
+  updateBadge();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SYNC_ALARM) syncCommunityBlocklist();
+  if (alarm.name === BADGE_ALARM) updateBadge();
+});
+
+// ---------------------------------------------------------------------------
+// Icon badge: how much slop was blocked TODAY (YouTube blocks + AI Overviews)
+// ---------------------------------------------------------------------------
+
+async function updateBadge() {
+  try {
+    const { events } = await chrome.storage.local.get({ events: [] });
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const today = events.filter((e) => e.t >= startOfDay.getTime()).length;
+    await chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
+    await chrome.action.setBadgeText({ text: today ? String(today) : "" });
+  } catch { /* badge is cosmetic */ }
+}
+
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (changes.events) updateBadge();
 });
 
 // ---------------------------------------------------------------------------

@@ -79,6 +79,7 @@
       const el = findAIOverview();
       if (el && !el.hasAttribute(HIDDEN_ATTR) && looksSafeToHide(el)) {
         el.setAttribute(HIDDEN_ATTR, "1");
+        ASB.logEvent("overview"); // badge + stats, once per hidden box
       }
     } catch {
       // fail silently, never break the page

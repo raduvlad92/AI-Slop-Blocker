@@ -305,6 +305,7 @@
     });
     refreshSets(data);
     processAll(); // channel blocks should sweep the rest of the page too
+    ASB.logEvent("video", blockedMinutes(card)); // badge + stats, fire-and-forget
 
     // 3. Satisfying toast with the running counter.
     const n = data.blockedCount;
@@ -322,6 +323,26 @@
         },
       });
     } catch { /* extension reloading — local block already succeeded */ }
+  }
+
+  // Estimated length of the blocked video, for the "brain rot avoided" stat.
+  // Cards carry a duration badge; on the watch page the <video> element knows.
+  function blockedMinutes(card) {
+    try {
+      if (card) {
+        const badge = card.querySelector(
+          "ytd-thumbnail-overlay-time-status-renderer, badge-shape, .yt-badge-shape__text, .badge-shape-wiz__text"
+        );
+        const m = (badge?.textContent || "").trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+        if (m) {
+          return Math.max(1, Math.round((+(m[1] || 0)) * 60 + +m[2] + +m[3] / 60));
+        }
+      } else {
+        const d = document.querySelector("video.html5-main-video")?.duration;
+        if (Number.isFinite(d) && d > 0) return Math.max(1, Math.round(d / 60));
+      }
+    } catch { /* fall through to the estimate */ }
+    return 8; // ASSUMPTION: average slop video length when duration is unknown
   }
 
   function hideCard(card) {
