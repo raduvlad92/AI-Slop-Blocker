@@ -30,8 +30,10 @@ and the only thing ever sent anywhere is an anonymous
    `POST /submit` collects anonymous submissions (deduped, rate-limited to
    50/day per install); `GET /stats` shows the most-reported videos/channels
    for manual review. See [backend/README.md](backend/README.md) to deploy.
-3. **[/blocklist](blocklist/)** — the public community list: two flat JSON
-   arrays fetched directly by every install. Curated **manually** from the
+3. **[/blocklist](blocklist/)** — the public community list: two JSON arrays
+   of `{id, name, added, reason}` entries fetched directly by every install
+   (the extension uses only `id`; the rest keeps the list auditable — what was
+   added, when, and why). Curated **manually** from the
    stats feed via PRs — never auto-merged (that's the anti-brigading defense;
    see [blocklist/CONTRIBUTING.md](blocklist/CONTRIBUTING.md)). A GitHub
    Action validates the JSON on every PR.
@@ -49,11 +51,13 @@ and the only thing ever sent anywhere is an anonymous
 4. The popup / options page (right-click the extension icon → Options) has the
    toggles, both block lists, and your slop counter.
 
-Before shipping, replace the placeholders in
-[extension/config.js](extension/config.js) (backend URL + GitHub raw URLs) and
-the matching `host_permissions` entry in
-[extension/manifest.json](extension/manifest.json). Icons are also still TODO
-(the Web Store requires 16/48/128px PNGs).
+The community blocklist syncs from this repo
+(`raw.githubusercontent.com/raduvlad92/AI-Slop-Blocker/main/blocklist/…`).
+Before shipping, replace the backend URL placeholder in
+[extension/config.js](extension/config.js) and the matching `host_permissions`
+entry in [extension/manifest.json](extension/manifest.json) with the deployed
+Worker URL. Icons are also still TODO (the Web Store requires 16/48/128px
+PNGs).
 
 ## Permissions rationale (Chrome Web Store review)
 

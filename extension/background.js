@@ -60,9 +60,13 @@ async function fetchIdArray(url) {
   if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
   const data = await res.json();
   if (!Array.isArray(data)) throw new Error(`${url} is not a JSON array`);
-  // Only keep plausible string IDs; a malformed upstream file must never
-  // poison the cache or crash filtering in content scripts.
-  return data.filter((x) => typeof x === "string" && x.length > 0 && x.length < 128);
+  // Blocklist entries are objects ({id, name, added, reason}); bare string
+  // ids are also accepted. Only ids are cached — the metadata exists for
+  // humans reviewing the repo. A malformed upstream file must never poison
+  // the cache or crash filtering in content scripts.
+  return data
+    .map((x) => (typeof x === "string" ? x : x && typeof x.id === "string" ? x.id : null))
+    .filter((id) => id && id.length < 128);
 }
 
 async function syncCommunityBlocklist() {

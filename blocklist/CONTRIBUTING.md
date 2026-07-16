@@ -3,9 +3,33 @@
 These two files are what every AI Slop Blocker install fetches directly from
 GitHub raw and applies alongside each user's personal list:
 
-- `videos.json` — a flat JSON array of YouTube video IDs (11 characters)
-- `channels.json` — a flat JSON array of channel identifiers, either canonical
-  `UC…` IDs or `@handles`
+- `videos.json` — blocked YouTube videos
+- `channels.json` — blocked YouTube channels
+
+## Entry format
+
+Both files are flat JSON arrays of objects:
+
+```json
+[
+  {
+    "id": "UCxxxxxxxxxxxxxxxxxxxxxx",
+    "name": "Channel Name",
+    "added": "2026-07-16",
+    "reason": "Fully AI-generated narration + stock footage farm"
+  }
+]
+```
+
+| Field | Required | Format |
+|---|---|---|
+| `id` | yes | Video: 11-char YouTube ID. Channel: canonical `UC…` ID or `@handle`. |
+| `name` | no | Video title or channel name, for human review (max 100 chars). |
+| `added` | yes | `YYYY-MM-DD` — the date the entry was merged. |
+| `reason` | no | One line on why it's AI slop (max 300 chars). |
+
+The extension only uses `id`; the rest exists so the list stays reviewable and
+auditable — anyone can see what was added, when, and why.
 
 ## How entries get here
 
@@ -30,11 +54,10 @@ design decision, not a missing feature.
 
 You can also propose additions/removals by PR against these files:
 
-- Keep the files valid JSON: a flat array of strings, nothing else.
-- One line per ID, keep the array sorted (makes diffs reviewable).
+- Keep the files valid JSON in the format above.
+- Keep entries sorted by `added` date (newest last) — it makes diffs reviewable.
 - In the PR description, link the video/channel and briefly say why it's
-  AI-generated content (e.g. synthetic voiceover + stock footage farm,
-  AI-generated thumbnails/scripts at scale).
+  AI-generated content.
 - Removals are taken seriously — if you're a creator who believes you were
   wrongly listed, open a PR or issue and it will be reviewed promptly.
 
