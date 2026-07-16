@@ -163,32 +163,91 @@
     );
   }
 
-  // Watch page: inline button in the owner row (next to Subscribe) so the
-  // currently playing video/channel can be blocked too.
+  // Watch page: inline pill in the owner row (next to Subscribe). Clicking it
+  // expands the pill to the right, revealing the two block actions in place —
+  // no dropdown, so nothing can render below the fold.
   function injectWatchButton() {
     if (location.pathname !== "/watch") return;
     const owner = document.querySelector("ytd-watch-metadata #owner");
-    if (!owner || owner.querySelector(".asb-btn-watch")) return;
+    if (!owner || owner.querySelector(".asb-watch")) return;
 
-    if (getComputedStyle(owner).position === "static") {
-      owner.style.position = "relative";
-    }
-    owner.appendChild(
-      makeButton("asb-btn-watch", () => openMenu(null, owner, watchPageInfo(), true))
+    const wrap = document.createElement("div");
+    wrap.className = "asb-watch";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "asb-watch-toggle";
+    toggle.title = "Mark as AI slop";
+    toggle.textContent = "🤖 AI Slop";
+
+    const actions = document.createElement("div");
+    actions.className = "asb-watch-actions";
+
+    const mkMini = (label, scope) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "asb-mini";
+      b.textContent = label;
+      b.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          wrap.classList.remove("asb-expanded");
+          // Identity is read at click time — the owner row survives SPA
+          // navigations while the video underneath it changes.
+          block(scope, watchPageInfo(), null);
+        },
+        { capture: true }
+      );
+      return b;
+    };
+    const miniChannel = mkMini("Block Channel", "channel");
+    actions.append(mkMini("Block Video", "video"), miniChannel);
+
+    toggle.addEventListener(
+      "click",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wasExpanded = wrap.classList.contains("asb-expanded");
+        closeMenu();
+        if (!wasExpanded) {
+          // No channel link found (rare) — offer the video action only.
+          miniChannel.style.display = watchPageInfo().channelId ? "" : "none";
+          wrap.classList.add("asb-expanded");
+        }
+      },
+      { capture: true }
     );
+
+    wrap.append(toggle, actions);
+    owner.appendChild(wrap);
   }
 
   let openMenuEl = null;
   function closeMenu() {
     openMenuEl?.remove();
     openMenuEl = null;
+    document
+      .querySelectorAll(".asb-watch.asb-expanded")
+      .forEach((el) => el.classList.remove("asb-expanded"));
   }
-  document.addEventListener("click", closeMenu, { capture: true });
+  // Outside click closes card menus and collapses the watch pill. Clicks
+  // inside the pill are handled by its own listeners (toggle semantics).
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (e.target instanceof Element && e.target.closest(".asb-watch")) return;
+      closeMenu();
+    },
+    { capture: true }
+  );
 
-  function openMenu(card, container, info, below = false) {
+  function openMenu(card, container, info) {
     closeMenu();
     const menu = document.createElement("div");
-    menu.className = below ? "asb-menu asb-menu--below" : "asb-menu";
+    menu.className = "asb-menu";
 
     const addItem = (label, scope) => {
       const item = document.createElement("button");
