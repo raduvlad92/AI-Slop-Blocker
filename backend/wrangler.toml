@@ -2,6 +2,20 @@ name = "aislopblocker-api"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
 
+# Daily review digest -> private GitHub repo (06:00 UTC).
+[triggers]
+crons = ["0 6 * * *"]
+
+[vars]
+# Private repo the digest is committed to (REVIEW.md + review.json).
+REVIEW_REPO = "raduvlad92/AI-Slop-Review"
+# Public blocklist source, used to flag already-promoted entries.
+PUBLIC_RAW_BASE = "https://raw.githubusercontent.com/raduvlad92/AI-Slop-Blocker/main/blocklist"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+#   GITHUB_TOKEN — fine-grained PAT, ONLY the review repo, Contents: read/write
+#   STATS_KEY    — optional, guards GET /stats and GET /digest
+
 [[d1_databases]]
 binding = "DB"
 database_name = "aislopblocker"

@@ -18,10 +18,34 @@ Body: `{ videoId, channelId, channelName, scope: "video" | "channel", installId 
 
 ### `GET /stats`
 
-Returns the top 100 submitted videos and channels by submission count — this is
-the manual-review feed used to decide what gets merged into `/blocklist`.
+Returns the top 100 submitted videos and channels by submission count.
 Optionally protected: set a secret with `wrangler secret put STATS_KEY`, then
 call `/stats?key=<value>`.
+
+### Daily review digest → private GitHub repo
+
+A cron trigger (06:00 UTC, see `wrangler.toml`) builds a full ranked snapshot
+of the review queue and commits two files to the **private** repo
+`raduvlad92/AI-Slop-Review`:
+
+- `REVIEW.md` — human-readable: one table per category (YouTube channels,
+  YouTube videos; domain/page are placeholders for a future website-blocking
+  feature), ranked by **distinct installs** that blocked each item, with
+  clickable links, first/last seen dates, and flags: 🆕 activity in the last
+  24h, ✅ already on the public blocklist.
+- `review.json` — the same data, machine-readable.
+
+`GET /digest?key=<STATS_KEY>` runs the same push on demand (for testing or an
+impatient review). Review workflow: read REVIEW.md on GitHub → promote
+entries by PR into `blocklist/*.json` in the public repo (they'll show ✅ in
+the next digest).
+
+**Setup (one-time):**
+
+1. Create a **fine-grained PAT** at github.com → Settings → Developer settings
+   → Fine-grained tokens: repository access = *only* `AI-Slop-Review`,
+   permissions = Contents: Read and write. Nothing else.
+2. `wrangler secret put GITHUB_TOKEN` and paste it.
 
 ## Deploy
 
@@ -35,8 +59,11 @@ wrangler d1 create aislopblocker
 # 2. Apply the schema
 wrangler d1 execute aislopblocker --remote --file=schema.sql
 
-# 3. (Optional) protect /stats
+# 3. (Optional) protect /stats and /digest
 wrangler secret put STATS_KEY
+
+# 3b. For the daily review digest (see above)
+wrangler secret put GITHUB_TOKEN
 
 # 4. Deploy
 wrangler deploy
