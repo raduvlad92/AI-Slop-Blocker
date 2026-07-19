@@ -1,15 +1,36 @@
 # 🤖🚫 AI Slop Blocker
 
+> **⚠️ Work in progress** — under active development. A free release on the
+> Chrome Web Store is planned soon.
+
 A free, lightweight Chrome extension that hides AI-generated content:
 
-- **Google Search** — removes the AI Overview / SGE box.
-- **YouTube** — adds a subtle "🤖 AI Slop" button to every video thumbnail;
-  one click hides the video (or the whole channel) instantly and forever,
-  everywhere it appears.
+- **Google Search** *(optional, can be toggled off in settings)* — removes the
+  AI Overview / SGE box.
+- **YouTube** — a "🤖 AI Slop" button under the video you're watching (and
+  optionally on every thumbnail); one click hides the video or the whole
+  channel instantly and forever, everywhere it appears.
 
-No accounts. No payments. No tracking — blocks live in `chrome.storage.local`,
-and the only thing ever sent anywhere is an anonymous
-`{videoId, channelId, scope}` submission tied to a random install UUID.
+## Privacy & why we collect anything at all
+
+No accounts. No payments. No tracking. Your block list, settings, and stats
+live in `chrome.storage.local` on your device — we never see your browsing,
+your identity, or your watch history.
+
+The **one** thing the extension ever sends anywhere: when you block a video or
+channel, an anonymous report — `{videoId, channelId, scope}` plus a random
+UUID generated at install (used only for rate limiting, tied to nothing) —
+goes to our server.
+
+**Why?** To build a curated community blocklist. Individual blocks from many
+users get reviewed by a human, and the worst offenders are added to a public
+list that every install syncs automatically — so instead of playing
+whack-a-mole one video at a time, you instantly block a LOT of known AI slop
+channels and videos out of the box. Think of it like the filter lists a good
+ad blocker ships with: the community finds the junk, everyone benefits. The
+list is public, auditable (every entry has a date and reason), and curated
+manually to prevent abuse — see
+[blocklist/CONTRIBUTING.md](blocklist/CONTRIBUTING.md).
 
 ## How the pieces connect
 
