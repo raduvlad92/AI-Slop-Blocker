@@ -12,6 +12,28 @@
       <h1>🤖🚫 AI Slop Blocker</h1>
     </header>
 
+    <section class="card reporting-card" id="reports">
+      <h2>Optional community reports</h2>
+      <p class="muted" id="reporting-disclosure">
+        Sharing is off unless you turn it on. If enabled, each new block sends
+        <code>{videoId, channelId, channelName, scope, installId}</code> to the AI
+        Slop Blocker report server. A channel block also sends the video currently
+        shown. The random installation ID connects your reports for duplicate
+        checks and rate limits. No account or full watch history is sent.
+      </p>
+      <p class="muted">
+        A human reviews reports before adding anything to the public community
+        list. Turning sharing off stops future reports; it does not delete reports
+        already sent. Raw reports expire after 90 days.
+        <a href="../privacy.html" target="_blank" rel="noopener">Read the privacy policy</a>.
+      </p>
+      <label class="toggle-row">
+        <span><strong>Share my future block reports</strong><small>Optional — local blocking works with sharing off</small></span>
+        <input type="checkbox" id="toggle-reporting" aria-describedby="reporting-disclosure reporting-status" />
+      </label>
+      <p class="muted" id="reporting-status" role="status" aria-live="polite">Sharing is off. New blocks stay on this device.</p>
+    </section>
+
     <!-- The shareable stat — visual centerpiece -->
     <section class="counter-card">
       <div class="counter" id="counter">0</div>

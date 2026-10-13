@@ -89,3 +89,6 @@ body {
   cursor: pointer;
 }
 #open-options:hover { border-color: var(--accent); color: var(--accent); }
+.reporting-note { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; color: var(--muted); font-size: 12px; }
+.reporting-note p { margin: 0 0 4px; }
+.reporting-note a { color: var(--accent); }

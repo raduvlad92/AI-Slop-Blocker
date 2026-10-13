@@ -21,3 +21,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_channel_per_install
 -- Rate-limit lookups (count per installId per day).
 CREATE INDEX IF NOT EXISTS idx_install_created
   ON submissions (installId, createdAt);
+
+-- Daily deletion of raw reports older than 90 days.
+CREATE INDEX IF NOT EXISTS idx_submission_created
+  ON submissions (createdAt);

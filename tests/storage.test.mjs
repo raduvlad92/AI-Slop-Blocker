@@ -99,7 +99,7 @@ const blockMessage = (index, overrides = {}) => ({
 });
 
 test("concurrent content tabs preserve every block, counter increment, and event", async () => {
-  const app = harness({ installId: "install-for-test" });
+  const app = harness({ installId: "install-for-test", reportingConsent: { enabled: true, updatedAt: Date.now() } });
   const tabs = Array.from({ length: 12 }, () => app.contentHelpers());
   await Promise.all(tabs.flatMap((helpers, index) => [
     helpers.block("video", blockMessage(index).info, index + 1),
@@ -146,7 +146,7 @@ test("channel blocking still adds the current video and channel removal leaves i
 });
 
 test("failed writes report failure and the queue continues with the next request", async () => {
-  const app = harness();
+  const app = harness({ installId: "install-for-test", reportingConsent: { enabled: true, updatedAt: Date.now() } });
   app.failWrite();
   await assert.rejects(app.contentHelpers().block("video", blockMessage(0).info, 8), /simulated storage failure/);
   const response = await app.send(blockMessage(1));
@@ -186,7 +186,7 @@ test("mutations reject other extensions and invalid scopes without changing stor
 
 test("channel blocks use aliases when the identity module is available", async () => {
   const canonical = "UCabcdefghijklmnopqrstuv";
-  const app = harness({ channelAliases: { "@example": canonical } }, {
+  const app = harness({ channelAliases: { "@example": canonical }, installId: "install-for-test", reportingConsent: { enabled: true, updatedAt: Date.now() } }, {
     ASBChannels: { canonical: (id, aliases) => aliases[id] || id },
   });
   const response = await app.send(blockMessage(0, { scope: "channel" }));

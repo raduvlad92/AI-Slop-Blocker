@@ -86,6 +86,9 @@ h3 { font-size: 13px; margin: 16px 0 6px; }
 .radio-row small { color: var(--muted); }
 
 .muted { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.reporting-card code { overflow-wrap: anywhere; }
+.reporting-card a { color: var(--accent); }
+.reporting-card .toggle-row { border-top: 1px solid var(--border); margin-top: 10px; }
 .count { color: var(--muted); font-weight: 400; }
 
 .stats-table {

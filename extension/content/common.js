@@ -16,6 +16,7 @@ const ASB = {
     },
     personal: { videos: {}, channels: {} },
     channelAliases: {},
+    reportingConsent: { enabled: false, updatedAt: 0 },
     community: { videos: [], channels: [], syncedAt: 0 },
     blockedCount: 0,
     // Event log powering the icon badge and the stats views:

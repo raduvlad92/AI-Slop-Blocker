@@ -1,6 +1,6 @@
 // Background service worker (MV3).
 // Responsibilities:
-//   1. First-install setup: anonymous installId, default settings.
+//   1. First-install setup: local defaults; reporting requires an explicit opt-in.
 //   2. Periodic community-blocklist sync via chrome.alarms.
 //   3. Relaying block submissions to the backend (content scripts message us;
 //      doing the fetch here keeps network access + retry logic in one place).
@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   showCardButtons: false, // thumbnail-overlay buttons are opt-in
   watchAction: "overlay", // what to do when a blocked video is opened
 };
+const DEFAULT_REPORTING_CONSENT = { enabled: false, updatedAt: 0 };
 
 // All read/modify/write operations for these keys share one queue. Content
 // scripts and the options page must message us instead of writing snapshots
@@ -75,6 +76,7 @@ async function persistBlock(msg) {
   const data = await chrome.storage.local.get({
     personal: { videos: {}, channels: {} },
     channelAliases: {},
+    reportingConsent: DEFAULT_REPORTING_CONSENT,
     blockedCount: 0,
     events: [],
   });
@@ -92,7 +94,9 @@ async function persistBlock(msg) {
   await chrome.storage.local.set(data);
 
   // Reporting remains best-effort and cannot hold up another local mutation.
-  submitToBackend(info).catch((err) => console.warn("[ASB] submission failed:", err.message));
+  if (data.reportingConsent?.enabled === true) {
+    submitToBackend(info).catch((err) => console.warn("[ASB] submission failed:", err.message));
+  }
   return { ok: true, ...data };
 }
 
@@ -116,6 +120,20 @@ async function removeBlock(msg) {
   }
   await chrome.storage.local.set({ personal });
   return { ok: true, personal };
+}
+
+async function setReporting(msg) {
+  if (typeof msg.enabled !== "boolean") throw new Error("Invalid reporting choice");
+  const reportingConsent = { enabled: msg.enabled, updatedAt: Date.now() };
+  const change = { reportingConsent };
+  if (msg.enabled) {
+    const { installId } = await chrome.storage.local.get("installId");
+    // The identifier is created only after the user affirmatively opts in.
+    // Existing identifiers remain local until that same explicit choice.
+    if (!installId) change.installId = crypto.randomUUID();
+  }
+  await chrome.storage.local.set(change);
+  return { ok: true, reportingConsent };
 }
 
 async function fetchChannelPage(url) {
@@ -145,22 +163,26 @@ let resolveChannelIdentities;
 // Install / startup
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(async () => {
-  const stored = await chrome.storage.local.get(["installId", "settings"]);
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  const stored = await chrome.storage.local.get(["settings", "reportingConsent"]);
 
-  // installId is a random UUID, generated once, never tied to any identity.
-  // Used only for backend rate limiting / dedupe.
-  if (!stored.installId) {
-    await chrome.storage.local.set({ installId: crypto.randomUUID() });
-  }
   if (!stored.settings) {
     await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
+  }
+  if (!stored.reportingConsent) {
+    await queueMutation(async () => {
+      const { reportingConsent } = await chrome.storage.local.get("reportingConsent");
+      if (!reportingConsent) await chrome.storage.local.set({ reportingConsent: DEFAULT_REPORTING_CONSENT });
+    });
   }
 
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_INTERVAL_MINUTES });
   chrome.alarms.create(BADGE_ALARM, { periodInMinutes: 30 });
   syncCommunityBlocklist();
   updateBadge();
+  // Present the optional choice without enabling sharing or interrupting an
+  // existing install when it receives an update.
+  if (reason === "install") chrome.runtime.openOptionsPage().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -255,16 +277,28 @@ async function syncCommunityBlocklist() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function submitToBackend(payload) {
-  const { installId } = await chrome.storage.local.get("installId");
-  const body = JSON.stringify({ ...payload, installId });
-
   // 3 attempts with short backoff. Never surfaces errors to the UI — the
   // user's local block already happened instantly, this is best-effort.
   for (let attempt = 0; attempt < 3; attempt++) {
+    // Check on every retry, so turning sharing off also stops pending retries.
+    // A missing consent record is local-only, including upgraded installs.
+    const { reportingConsent, installId } = await chrome.storage.local.get({
+      reportingConsent: DEFAULT_REPORTING_CONSENT,
+      installId: null,
+    });
+    if (reportingConsent?.enabled !== true || !installId) return;
+    const body = JSON.stringify({
+      videoId: payload.videoId,
+      channelId: payload.channelId,
+      channelName: payload.channelName,
+      scope: payload.scope,
+      installId,
+    });
     try {
       const res = await fetch(`${BACKEND_URL}/submit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "omit",
         body,
       });
       // 4xx (validation / rate limit) will never succeed on retry — stop.
@@ -282,6 +316,20 @@ async function submitToBackend(payload) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;
+  if (msg?.type === "asb-set-reporting") {
+    const fromSettings = ["options/", "popup/"].some((path) =>
+      sender.url?.startsWith(chrome.runtime.getURL(path))
+    );
+    if (!fromSettings) {
+      sendResponse({ ok: false, error: "Reporting choices must be made in extension settings" });
+      return false;
+    }
+    queueMutation(() => setReporting(msg)).then(
+      sendResponse,
+      (err) => sendResponse({ ok: false, error: err.message })
+    );
+    return true;
+  }
   if (msg?.type === "asb-resolve-channels") {
     if (!Array.isArray(msg.ids) || msg.ids.length > 20) {
       sendResponse({ ok: false, error: "Invalid channel lookup" });
@@ -308,8 +356,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // keep the response channel open until the write completes
   }
   if (msg?.type === "asb-submit") {
-    submitToBackend(msg.payload); // deliberately not awaited
-    sendResponse({ ok: true });
+    try {
+      const info = blockInfo({ scope: msg.payload?.scope, info: msg.payload });
+      submitToBackend(info).catch(() => {}); // consent-gated, deliberately not awaited
+      sendResponse({ ok: true });
+    } catch (err) {
+      sendResponse({ ok: false, error: err.message });
+    }
     return false;
   }
   if (msg?.type === "asb-sync-now") {

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="How AI Slop Blocker handles local settings, optional community reports, and data retention.">
+  <title>AI Slop Blocker — Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font: 16px/1.65 system-ui, sans-serif; background: #f8fafc; color: #172033; }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; }
+    h1 { font-size: clamp(1.8rem, 6vw, 2.5rem); line-height: 1.2; margin-bottom: 8px; }
+    h2 { font-size: 1.2rem; margin-top: 32px; }
+    p, ul { margin: 12px 0; }
+    li { margin: 6px 0; }
+    a { color: #1d4ed8; text-underline-offset: 3px; }
+    .updated { color: #556176; }
+    .summary { padding: 16px 20px; background: #e8eefb; border-radius: 12px; }
+    code { overflow-wrap: anywhere; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #101827; color: #e8edf5; }
+      .summary { background: #1e304b; }
+      .updated { color: #aab7cc; }
+      a { color: #9bbcff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AI Slop Blocker Privacy Policy</h1>
+    <p class="updated">Last updated: October 13, 2026</p>
+    <p class="summary">Your personal block list, settings, and statistics stay on your device. Sharing new blocks with the community is optional and off by default. If you opt in, reports are linked by a random installation identifier and kept in the active reporting database for 90 days.</p>
+
+    <h2>Who operates the extension</h2>
+    <p>The operator is the AI Slop Blocker maintainer (<a href="https://github.com/raduvlad92" rel="noreferrer">raduvlad92</a>). The extension and community lists are available in the <a href="https://github.com/raduvlad92/AI-Slop-Blocker" rel="noreferrer">public project repository</a>. There are no user accounts, payments, advertising, or analytics features in the extension.</p>
+
+    <h2>Data on your device</h2>
+    <p>The extension uses Chrome's local extension storage for your personal video and channel blocks, settings, cached community lists, channel identity mappings, and blocking statistics. Statistics include event times, event types, and estimated minutes saved. This information is not uploaded as a browsing or statistics log.</p>
+    <p>The extension reads details on Google Search and YouTube pages to hide AI Overviews, identify video and channel cards, and apply your filters. It does not send your search queries, full browsing history, full watch history, page contents, passwords, or payment information to the reporting server. Local records remain on your device until removed, pruned by the extension, or cleared by uninstalling it.</p>
+
+    <h2>Optional community reporting</h2>
+    <p>Reporting is disabled by default. You can choose to share future blocks in the extension's Options page. A random installation UUID is generated when you first opt in. Each report contains:</p>
+    <ul>
+      <li>The YouTube video ID and, when available, channel ID or handle and channel name.</li>
+      <li>Whether you chose to block a video or a channel.</li>
+      <li>Your random installation UUID; the server adds the time the report was received.</li>
+    </ul>
+    <p>These are <strong>pseudonymous reports</strong>: the UUID is not an account or your name, but it lets the server link reports from the same installation. It is used to deduplicate reports, enforce submission limits, and count distinct submitted identifiers. It is not proof that reports came from distinct people.</p>
+    <p>Reports help a human maintainer review possible additions to the shared blocklist. Reports are never automatically promoted into the public list. Local blocking works whether reporting is enabled or disabled, and old local blocks are not uploaded when you enable reporting.</p>
+
+    <h2>Hosting and abuse prevention</h2>
+    <p>The reporting API is hosted on Cloudflare Workers, with reports stored in Cloudflare D1. Cloudflare receives normal connection information such as your IP address and request headers when you contact the API. The Worker derives a daily-changing hash from Cloudflare's client-IP header for short-window abuse counters. The API does not write the IP address or this hash into the reports database or review repository.</p>
+    <p>Per-source and shared endpoint limits help protect the service. People using the same shared IP may share a limit. Hosting providers may process connection information and operational logs under their own policies: <a href="https://www.cloudflare.com/privacypolicy/" rel="noreferrer">Cloudflare Privacy Policy</a>.</p>
+
+    <h2>Other network requests</h2>
+    <p>The extension downloads the public community lists from GitHub on installation, browser startup when needed, periodic refreshes, and when you select Sync now. It can also request public YouTube channel pages to resolve channel handles to stable channel IDs. Channel lookup requests omit browser credentials. These requests reveal normal connection information to GitHub or YouTube; they do not include your installation UUID or personal block list.</p>
+    <p>Those services operate under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noreferrer">GitHub Privacy Statement</a> and <a href="https://policies.google.com/privacy" rel="noreferrer">Google Privacy Policy</a>. Your ordinary use of Google and YouTube is separate from the extension's reporting service.</p>
+
+    <h2>Retention and published lists</h2>
+    <p>Raw UUID-linked reports expire after <strong>90 days</strong>. They are excluded from review statistics and new digests after that point, and deleted from the active database by the daily cleanup or an administrator's manual digest run. Scheduled cleanup normally removes expired rows on its next run; service interruptions can delay physical deletion.</p>
+    <p>Cloudflare's recovery backups can temporarily retain deleted database records under its backup settings, for up to 30 additional days depending on the hosting plan. They are not used as the active review database.</p>
+    <p>The maintainer's private GitHub review repository contains aggregated item identifiers, names, report counts, and first/last reporting dates. It does <strong>not</strong> contain raw installation UUIDs. Historical aggregated review snapshots and Git commit history may be kept indefinitely.</p>
+    <p>The public curated blocklist contains video or channel identifiers, optional names and reasons, and dates of addition. These lists and their Git history may also remain public indefinitely. Removing or expiring an individual report does not remove an already reviewed public entry or rewrite historical aggregate snapshots.</p>
+
+    <h2>Your choices and contact</h2>
+    <p>Turn off community reporting in Options to stop future report submissions. A request already sent can still arrive at the server; reports already received remain subject to the retention described above. Removing a local block or uninstalling the extension does not retract earlier server reports. You can remove local blocks in Options and clear local extension data by uninstalling the extension.</p>
+    <p>For privacy questions, requests, or concerns, email <a href="mailto:contact@deletecookies.dev">contact@deletecookies.dev</a>. You can also use the <a href="https://github.com/raduvlad92/AI-Slop-Blocker/issues" rel="noreferrer">project's GitHub issue tracker</a> for general questions. Do not post installation identifiers or other personal information in public issues. Creators can request review of a listed video or channel through a GitHub issue or a removal pull request.</p>
+
+    <h2>Policy updates</h2>
+    <p>Changes to this policy will be published here with an updated date and in the project repository. Check this policy when updating the extension.</p>
+  </main>
+</body>
+</html>

@@ -1,8 +1,8 @@
 // Central config for the extension's network endpoints.
-// Update these before shipping (and keep host_permissions in manifest.json in sync).
+// Keep host_permissions in manifest.json in sync with these endpoints.
 
-// Cloudflare Worker that collects anonymous block submissions (see /backend).
-export const BACKEND_URL = "https://aislopblocker-api.YOUR-SUBDOMAIN.workers.dev";
+// Cloudflare Worker that collects optional pseudonymous block reports (see /backend).
+export const BACKEND_URL = "https://aislopblocker-api.radu-vlad-92.workers.dev";
 
 // Public community blocklist, fetched straight from GitHub raw (no auth, plain JSON).
 export const BLOCKLIST_VIDEOS_URL =

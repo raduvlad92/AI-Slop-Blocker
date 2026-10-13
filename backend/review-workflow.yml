@@ -1,0 +1,78 @@
+# Install in the PRIVATE AI-Slop-Review repo as .github/workflows/review.yml.
+# Repository variable ASB_API_URL and encrypted secret ASB_STATS_KEY are required.
+name: Daily community review
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-community-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch aggregate review
+        env:
+          ASB_API_URL: ${{ vars.ASB_API_URL }}
+          ASB_STATS_KEY: ${{ secrets.ASB_STATS_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.error
+          import urllib.request
+          from urllib.parse import urlsplit
+
+          base = os.environ['ASB_API_URL'].rstrip('/')
+          url = urlsplit(base)
+          if url.scheme != 'https' or not url.netloc or url.username or url.password or url.query or url.fragment:
+              raise SystemExit('ASB_API_URL must be an HTTPS base URL')
+          key = os.environ['ASB_STATS_KEY']
+          if not key:
+              raise SystemExit('ASB_STATS_KEY is missing')
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          request = urllib.request.Request(base + '/review', headers={
+              'User-Agent': 'AI-Slop-Review/0.1.1 (GitHub Actions; contact@deletecookies.dev)',
+              'Accept': 'application/json',
+          })
+          request.add_unredirected_header('Authorization', 'Bearer ' + key)
+          opener = urllib.request.build_opener(NoRedirect())
+          try:
+              with opener.open(request, timeout=60) as response:
+                  review = json.load(response)
+          except urllib.error.HTTPError as error:
+              print('Review HTTP status:', error.code)
+              for name in ('content-type', 'server', 'cf-ray', 'cf-mitigated'):
+                  print(name + ':', error.headers.get(name, 'absent'))
+              raise SystemExit('Review download failed; no snapshot written')
+          if set(review) != {'digest', 'markdown'} or not isinstance(review['digest'], dict) or not isinstance(review['markdown'], str):
+              raise SystemExit('Unexpected review response')
+          pathlib.Path('REVIEW.md').write_text(review['markdown'], encoding='utf-8')
+          pathlib.Path('review.json').write_text(json.dumps(review['digest'], indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          print('Saved aggregate review files.')
+          PY
+      - name: Commit review snapshot
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add REVIEW.md review.json
+          if git diff --cached --quiet; then
+            echo 'Review snapshot unchanged.'
+          else
+            git commit -m 'Update daily community review'
+            git push
+          fi

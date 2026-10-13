@@ -2,8 +2,12 @@
 // Cloudflare Worker + D1. Public submissions, protected admin endpoints.
 // installId is a client-side UUID used for rate limiting and dedupe.
 
+import privacyPolicy from "../privacy.html";
+
 const DAILY_LIMIT = 50; // submissions per installId per rolling 24h
 const MAX_BODY_BYTES = 2048;
+const REPORT_RETENTION_DAYS = 90;
+const ACTIVE_REPORTS_SQL = `createdAt > datetime('now', '-${REPORT_RETENTION_DAYS} day')`;
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 // UC… canonical channel id, or an @handle (the extension sends whichever the
@@ -31,11 +35,31 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return json(null, 204);
+    if (request.method === "GET" && url.pathname === "/health") {
+      return json({ ok: true, service: "ai-slop-blocker" });
+    }
+    if (request.method === "GET" && url.pathname === "/privacy") {
+      return new Response(privacyPolicy, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+          "x-content-type-options": "nosniff",
+          "referrer-policy": "no-referrer",
+        },
+      });
+    }
     if (request.method === "POST" && url.pathname === "/submit") {
       return handleSubmit(request, env);
     }
     if (request.method === "GET" && url.pathname === "/stats") {
       return handleStats(request, env);
+    }
+    if (url.pathname === "/review") {
+      if (request.method !== "GET") {
+        return json({ error: "use GET /review" }, 405, { allow: "GET" });
+      }
+      return handleReview(request, env);
     }
     if (url.pathname === "/digest") {
       if (request.method !== "POST") {
@@ -46,12 +70,14 @@ export default {
     return json({ error: "not found" }, 404);
   },
 
-  // Daily cron (see wrangler.toml [triggers]): push the review digest to the
-  // private GitHub repo. A failed run just waits for tomorrow (or a manual
-  // POST /digest) — never throws.
+  // Daily cron always prunes raw reports. The recommended GitHub Actions mode
+  // pulls GET /review and needs no repository token in the Worker. A configured
+  // GITHUB_TOKEN enables the legacy server-side push after cleanup.
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(
-      buildAndPushDigest(env).catch((err) => console.error("digest failed:", err.message))
+      pruneExpiredReports(env)
+        .then(() => env.GITHUB_TOKEN ? buildAndPushDigest(env) : undefined)
+        .catch((err) => console.error("daily review maintenance failed:", err.message))
     );
   },
 };
@@ -215,12 +241,12 @@ async function handleStats(request, env) {
   const [videos, channels] = await Promise.all([
     env.DB.prepare(
       `SELECT videoId, MAX(channelName) AS channelName, COUNT(*) AS submissions
-       FROM submissions WHERE scope = 'video'
+       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL}
        GROUP BY videoId ORDER BY submissions DESC LIMIT 100`
     ).all(),
     env.DB.prepare(
       `SELECT channelId, MAX(channelName) AS channelName, COUNT(*) AS submissions
-       FROM submissions WHERE scope = 'channel'
+       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL}
        GROUP BY channelId ORDER BY submissions DESC LIMIT 100`
     ).all(),
   ]);
@@ -229,7 +255,8 @@ async function handleStats(request, env) {
 }
 
 // ---------------------------------------------------------------------------
-// Daily review digest — full ranked snapshot committed to a private repo.
+// Review digest — ranked aggregates read by GitHub Actions or pushed by the
+// optional legacy Worker mode. Read-only generation never prunes reports.
 // Categories are future-proofed: domain/page stay empty until the extension
 // grows website blocking.
 // ---------------------------------------------------------------------------
@@ -238,28 +265,45 @@ async function handleDigest(request, env) {
   const unauthorized = await requireAdmin(request, env);
   if (unauthorized) return unauthorized;
   try {
+    await pruneExpiredReports(env);
     return json({ ok: true, ...(await buildAndPushDigest(env)) });
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
   }
 }
 
-async function buildAndPushDigest(env) {
-  if (!env.GITHUB_TOKEN) throw new Error("GITHUB_TOKEN secret is not set");
+async function handleReview(request, env) {
+  const unauthorized = await requireAdmin(request, env);
+  if (unauthorized) return unauthorized;
+  try {
+    const digest = await buildReviewDigest(env);
+    return json({ digest, markdown: buildMarkdown(digest) });
+  } catch (err) {
+    console.error("review generation failed:", err.message);
+    return json({ error: "review temporarily unavailable" }, 500);
+  }
+}
 
+async function pruneExpiredReports(env) {
+  await env.DB.prepare(
+    `DELETE FROM submissions WHERE createdAt <= datetime('now', '-${REPORT_RETENTION_DAYS} day')`
+  ).run();
+}
+
+async function buildReviewDigest(env) {
   const [videos, channels] = await Promise.all([
     env.DB.prepare(
       `SELECT videoId AS id, MAX(channelName) AS name,
               COUNT(DISTINCT installId) AS blocks,
               MIN(createdAt) AS firstSeen, MAX(createdAt) AS lastSeen
-       FROM submissions WHERE scope = 'video'
+       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL}
        GROUP BY videoId ORDER BY blocks DESC, lastSeen DESC LIMIT 500`
     ).all(),
     env.DB.prepare(
       `SELECT channelId AS id, MAX(channelName) AS name,
               COUNT(DISTINCT installId) AS blocks,
               MIN(createdAt) AS firstSeen, MAX(createdAt) AS lastSeen
-       FROM submissions WHERE scope = 'channel'
+       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL}
        GROUP BY channelId ORDER BY blocks DESC, lastSeen DESC LIMIT 500`
     ).all(),
   ]);
@@ -282,7 +326,7 @@ async function buildAndPushDigest(env) {
       isNew: toEpoch(r.lastSeen) >= dayAgo,
     }));
 
-  const digest = {
+  return {
     generatedAt: new Date().toISOString(),
     totals: { video: videos.results.length, channel: channels.results.length, domain: 0, page: 0 },
     categories: {
@@ -293,6 +337,11 @@ async function buildAndPushDigest(env) {
     },
   };
 
+}
+
+async function buildAndPushDigest(env) {
+  if (!env.GITHUB_TOKEN) throw new Error("GITHUB_TOKEN secret is not set");
+  const digest = await buildReviewDigest(env);
   const date = digest.generatedAt.slice(0, 10);
   // Sequential PUTs — concurrent contents-API commits race on the branch head.
   await putGithubFile(env, "REVIEW.md", buildMarkdown(digest), `Review digest ${date}`);

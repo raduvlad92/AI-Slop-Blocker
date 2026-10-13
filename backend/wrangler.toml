@@ -1,8 +1,10 @@
 name = "aislopblocker-api"
+account_id = "047c2c72488af1dfe1a83f4f9553c501"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
+workers_dev = true
 
-# Daily review digest -> private GitHub repo (06:00 UTC).
+# Daily raw-report expiry cleanup (06:00 UTC). Private GitHub Actions pulls /review.
 [triggers]
 crons = ["0 6 * * *"]
 
@@ -13,24 +15,23 @@ REVIEW_REPO = "raduvlad92/AI-Slop-Review"
 PUBLIC_RAW_BASE = "https://raw.githubusercontent.com/raduvlad92/AI-Slop-Blocker/main/blocklist"
 
 # Secrets (set via `wrangler secret put <NAME>`):
-#   GITHUB_TOKEN — fine-grained PAT, ONLY the review repo, Contents: read/write
-#   STATS_KEY    — required for GET /stats and POST /digest (Bearer header)
+#   STATS_KEY    — required for /stats, /review, and legacy /digest (Bearer header)
+#   GITHUB_TOKEN — optional legacy push; leave unset when using private Actions
 
 # Independent of the caller's installId. Cloudflare limits are approximate and
 # per location. Namespace IDs must be unique within your Cloudflare account.
 # Requires Wrangler >= 4.36.0. No IP address is persisted in the D1 database.
 [[ratelimits]]
 name = "SUBMISSION_NETWORK_LIMITER"
-namespace_id = "1001"
+namespace_id = "80741001"
 simple = { limit = 60, period = 60 }
 
 [[ratelimits]]
 name = "SUBMISSION_BUDGET"
-namespace_id = "1002"
+namespace_id = "80741002"
 simple = { limit = 300, period = 60 }
 
 [[d1_databases]]
 binding = "DB"
 database_name = "aislopblocker"
-# Replace with the id printed by: wrangler d1 create aislopblocker
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "1233bb19-fb79-47f7-beed-ed3bd8209ede"

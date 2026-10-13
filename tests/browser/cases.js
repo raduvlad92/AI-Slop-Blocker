@@ -6,7 +6,7 @@
   const wait = (ms = 220) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const video = "AAAAAAAAAAA", other = "BBBBBBBBBBB", channel = "UCabcdefghijklmnopqrstuv";
-  const defaults = { settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: true, watchAction: "overlay" }, personal: { videos: {}, channels: {} }, channelAliases: {}, community: { videos: [], channels: [], syncedAt: 0 }, blockedCount: 0, events: [], installId: "test-install" };
+  const defaults = { settings: { hideAIOverview: true, hideYouTube: true, showCardButtons: true, watchAction: "overlay" }, personal: { videos: {}, channels: {} }, channelAliases: {}, community: { videos: [], channels: [], syncedAt: 0 }, blockedCount: 0, events: [], installId: "test-install", reportingConsent: { enabled: true, updatedAt: 1 } };
 
   function environment(initial) {
     const state = { ...clone(defaults), ...clone(initial) };
@@ -14,7 +14,7 @@
     let handler;
     const event = { addListener() {} };
     const chrome = {
-      runtime: { id: "browser-test", onInstalled: event, onStartup: event, onMessage: { addListener: (callback) => { handler = callback; } } },
+      runtime: { id: "browser-test", getURL: (path) => `chrome-extension://browser-test/${path}`, onInstalled: event, onStartup: event, onMessage: { addListener: (callback) => { handler = callback; } } },
       storage: { local: {
         onChanged: { addListener: (callback) => changes.push(callback) },
         async get(keys) {

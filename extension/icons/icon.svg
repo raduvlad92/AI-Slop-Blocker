@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <title>AI Slop Blocker</title>
+  <desc>A robot head crossed by a rose prohibition stroke.</desc>
+  <g fill="#1a1c1f">
+    <rect x="45" y="19" width="6" height="14" rx="3"/>
+    <circle cx="48" cy="17" r="5"/>
+    <rect x="12" y="40" width="12" height="17" rx="5"/>
+    <rect x="72" y="40" width="12" height="17" rx="5"/>
+    <rect x="20" y="27" width="56" height="44" rx="11"/>
+  </g>
+  <rect x="25" y="32" width="46" height="34" rx="7" fill="#ffffff"/>
+  <g fill="#1a1c1f">
+    <circle cx="36" cy="44" r="5"/>
+    <circle cx="60" cy="44" r="5"/>
+    <rect x="37" y="55" width="22" height="5" rx="2.5"/>
+  </g>
+  <g fill="none" stroke="#e11d48" stroke-width="8">
+    <circle cx="48" cy="48" r="44"/>
+    <path d="M17 79 79 17" stroke-linecap="round"/>
+  </g>
+</svg>

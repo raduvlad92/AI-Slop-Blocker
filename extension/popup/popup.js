@@ -6,6 +6,7 @@ const DEFAULTS = {
     watchAction: "overlay",
   },
   blockedCount: 0,
+  reportingConsent: { enabled: false, updatedAt: 0 },
   events: [],
 };
 
@@ -23,6 +24,9 @@ async function render() {
   $("counter").textContent = data.blockedCount.toLocaleString();
   $("toggle-google").checked = data.settings.hideAIOverview;
   $("toggle-youtube").checked = data.settings.hideYouTube;
+  $("reporting-status").textContent = data.reportingConsent?.enabled === true
+    ? "Community report sharing is on."
+    : "Community report sharing is off.";
 
   const action = data.settings.watchAction || "overlay";
   const radio = document.querySelector(`input[name="watchAction"][value="${action}"]`);
@@ -62,4 +66,5 @@ document
   .forEach((r) => r.addEventListener("change", saveSettings));
 $("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
+chrome.storage.local.onChanged.addListener(render);
 render();

@@ -6,6 +6,9 @@ GitHub raw and applies alongside each user's personal list:
 - `videos.json` — blocked YouTube videos
 - `channels.json` — blocked YouTube channels
 
+Both lists are currently empty. Personal blocking and Google's AI Overview
+filter work independently of community entries.
+
 ## Entry format
 
 Both files are flat JSON arrays of objects:
@@ -33,13 +36,31 @@ auditable — anyone can see what was added, when, and why.
 
 ## How entries get here
 
-1. When someone blocks a video or channel in the extension, an **anonymous**
-   submission ({videoId, channelId, scope} + a random install UUID) is sent to
-   the backend. No accounts, no personal data.
-2. I (Vlad) periodically review the top submissions via the backend's `/stats`
-   endpoint — what's being reported most, by how many distinct installs.
-3. Entries that are clearly AI slop get merged into these JSON files via a
+1. Community reporting is **off by default**. If a user explicitly enables
+   **Share my future block reports** in Settings, later blocks can send a
+   **pseudonymous** report containing `{videoId, channelId, channelName, scope,
+   installId}` when available. A channel report also includes its current video.
+   Opt-in does not upload existing local blocks; turning sharing off stops
+   future reports. Local blocking does not depend on sharing.
+2. A random installation UUID is generated on first opt-in. It connects reports
+   for deduplication, rate limits, and counts of distinct submitted identifiers.
+   Those counts are not verified people or distinct-user counts. Full browsing,
+   search and watch histories are not uploaded.
+3. A GitHub Actions workflow in the private `raduvlad92/AI-Slop-Review` repository
+   uses the `ASB_API_URL` variable and `ASB_STATS_KEY` secret to request the
+   administrator-protected, read-only `GET /review` endpoint. It writes aggregate
+   `REVIEW.md` and `review.json` snapshots with its ephemeral, repository-scoped
+   token. This release mode does not store a persistent GitHub PAT in the Worker.
+   The maintainer reviews candidate videos/channels from these snapshots.
+4. Entries that are clearly AI slop get merged into these JSON files via a
    normal pull request.
+
+Raw UUID-linked reports expire after 90 days; private review snapshots contain
+aggregates without raw installation UUIDs. Historical aggregate snapshots and
+public curated lists/Git history can remain indefinitely. Disabling sharing or
+removing a personal block does not retract a report already received. See the
+[privacy policy](https://aislopblocker-api.radu-vlad-92.workers.dev/privacy) and
+[backend documentation](../backend/README.md) for retention and data handling.
 
 ## Why merging is manual — on purpose
 
@@ -58,8 +79,8 @@ You can also propose additions/removals by PR against these files:
 - Keep entries sorted by `added` date (newest last) — it makes diffs reviewable.
 - In the PR description, link the video/channel and briefly say why it's
   AI-generated content.
-- Removals are taken seriously — if you're a creator who believes you were
-  wrongly listed, open a PR or issue and it will be reviewed promptly.
+- If you're a creator who believes you were wrongly listed, open a removal PR
+  or issue for maintainer review.
 
-A GitHub Actions check validates the JSON structure on every PR so a malformed
-merge can never break the extension's fetch/parse.
+A GitHub Actions check validates the JSON structure and identifiers when these
+JSON files change in a PR or on `main`.

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Slop Blocker — artwork</title>
+<style>
+  :root { font: 14px/1.5 system-ui, sans-serif; color: #1a1c1f; background: #f6f7f9; }
+  body { max-width: 800px; margin: 48px auto; padding: 0 24px; }
+  h1 { font-size: 24px; margin-bottom: 6px; } p { color: #6b7280; }
+  .icons { display: flex; gap: 28px; align-items: center; padding: 24px; border-radius: 16px; background: white; }
+  figure { margin: 0; text-align: center; } figcaption { color: #6b7280; margin-top: 12px; font-size: 12px; }
+  canvas { display: block; } .promo { margin-top: 24px; display: inline-block; box-shadow: 0 8px 30px #1a1c1f0d; }
+  .dark { display: inline-block; background: #1a1d21; padding: 20px; margin-top: 24px; border-radius: 16px; }
+  button { border: 1px solid #e5e7eb; background: white; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+</style>
+<h1>AI Slop Blocker</h1>
+<p>Deterministic SVG → canvas artwork. Icons have transparent backgrounds. The 128px export uses 16px padding.</p>
+<div class="icons" id="icons"></div>
+<div class="promo" id="promo"></div>
+<div class="dark"><img src="../extension/icons/icon.svg" width="96" height="96" alt="Icon on a dark background"></div>
+<p id="status">Rendering…</p>
+<button type="button" id="download">Download PNG exports</button>
+<script>
+  const iconSource = "../extension/icons/icon.svg";
+  const promoSource = "promo-440x280.svg";
+  window.artworkExports = {};
+  async function rasterize(source, width, height, padding = 0) {
+    const img = new Image();
+    img.src = source;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, padding, padding, width - padding * 2, height - padding * 2);
+    return canvas;
+  }
+  (async () => {
+    for (const size of [16, 32, 48, 128]) {
+      const canvas = await rasterize(iconSource, size, size, size === 128 ? 16 : 0);
+      const figure = document.createElement("figure");
+      const caption = document.createElement("figcaption"); caption.textContent = `${size} × ${size}`;
+      figure.append(canvas, caption); document.getElementById("icons").append(figure);
+      artworkExports[`icon-${size}.png`] = canvas.toDataURL("image/png");
+    }
+    const promo = await rasterize(promoSource, 440, 280);
+    document.getElementById("promo").append(promo);
+    artworkExports["promo-440x280.png"] = promo.toDataURL("image/png");
+    window.artworkDone = true;
+    document.getElementById("status").textContent = "Ready. Promo artwork is branding, not a product screenshot.";
+  })().catch(error => { document.getElementById("status").textContent = String(error); });
+  document.getElementById("download").addEventListener("click", () => {
+    for (const [name, data] of Object.entries(artworkExports)) {
+      const link = document.createElement("a"); link.href = data; link.download = name; link.click();
+    }
+  });
+</script>
+</html>

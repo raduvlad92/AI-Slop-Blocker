@@ -9,6 +9,7 @@ const DEFAULTS = {
     watchAction: "overlay",
   },
   personal: { videos: {}, channels: {} },
+  reportingConsent: { enabled: false, updatedAt: 0 },
   community: { videos: [], channels: [], syncedAt: 0 },
   blockedCount: 0,
   events: [],
@@ -26,6 +27,12 @@ async function render() {
   const action = data.settings.watchAction || "overlay";
   const radio = document.querySelector(`input[name="watchAction"][value="${action}"]`);
   if (radio) radio.checked = true;
+  if (!$("toggle-reporting").disabled) {
+    $("toggle-reporting").checked = data.reportingConsent?.enabled === true;
+  }
+  $("reporting-status").textContent = data.reportingConsent?.enabled === true
+    ? "Sharing is on for future block reports. You can turn it off at any time."
+    : "Sharing is off. New blocks stay on this device.";
 
   renderList(
     $("my-channels"),
@@ -153,6 +160,22 @@ function renderStats(events) {
 $("toggle-google").addEventListener("change", saveSettings);
 $("toggle-youtube").addEventListener("change", saveSettings);
 $("toggle-card-buttons").addEventListener("change", saveSettings);
+$("toggle-reporting").addEventListener("change", async () => {
+  const toggle = $("toggle-reporting");
+  const enabled = toggle.checked;
+  toggle.disabled = true;
+  $("reporting-status").textContent = "Saving your choice…";
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "asb-set-reporting", enabled });
+    if (!response?.ok) throw new Error(response?.error || "Could not save reporting choice");
+    toggle.disabled = false;
+    await render();
+  } catch {
+    toggle.disabled = false;
+    await render();
+    $("reporting-status").textContent = "Couldn't save your choice. Please try again.";
+  }
+});
 document
   .querySelectorAll('input[name="watchAction"]')
   .forEach((r) => r.addEventListener("change", saveSettings));

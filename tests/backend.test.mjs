@@ -3,7 +3,14 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test, mock } from "node:test";
 
-const source = readFileSync(new URL("../backend/src/index.js", import.meta.url), "utf8");
+const sourceURL = new URL("../backend/src/index.js", import.meta.url);
+const workerSource = readFileSync(sourceURL, "utf8");
+const policyImport = /^import privacyPolicy from "([^"]+)";$/m.exec(workerSource);
+assert.ok(policyImport, "the Worker must import its canonical policy");
+const privacyPolicy = readFileSync(new URL(policyImport[1], sourceURL), "utf8");
+// Wrangler imports HTML as a string. Inject the identical file for Node's
+// data-URL module loader, which does not support Worker text imports.
+const source = workerSource.replace(policyImport[0], `const privacyPolicy = ${JSON.stringify(privacyPolicy)};`);
 const schema = readFileSync(new URL("../backend/schema.sql", import.meta.url), "utf8");
 const { default: worker } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 const ADMIN_KEY = "test-only-long-admin-credential";
@@ -19,6 +26,10 @@ function d1(t) {
   t.after(() => sqlite.close());
   const DB = {
     prepare: mock.fn((sql) => ({
+      async run() {
+        const result = sqlite.prepare(sql).run();
+        return { meta: { changes: result.changes } };
+      },
       bind(...args) {
         return {
           async run() {
@@ -87,7 +98,11 @@ function github(t) {
   });
 }
 
-const adminEndpoints = [{ path: "/stats", method: "GET" }, { path: "/digest", method: "POST" }];
+const adminEndpoints = [
+  { path: "/stats", method: "GET" },
+  { path: "/digest", method: "POST" },
+  { path: "/review", method: "GET" },
+];
 for (const { path, method } of adminEndpoints) {
   test(`${method} ${path} fails closed with an unset or empty admin key`, async (t) => {
     const outbound = noNetwork(t);
@@ -324,4 +339,194 @@ test("changing UUID letter casing does not create a second installation identity
   const response = await worker.fetch(submission(payload({ installId: id.toUpperCase() })), env);
   assert.equal((await response.json()).reason, "duplicate");
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 1);
+});
+
+function seedRetentionRows(sqlite) {
+  const insert = sqlite.prepare(`INSERT INTO submissions
+    (videoId, channelId, channelName, scope, installId, createdAt)
+    VALUES (?, ?, ?, ?, ?, datetime('now', ?))`);
+  insert.run("aaaaaaaaaaa", "@expired", "Expired", "video", installId(91), "-91 day");
+  insert.run("aaaaaaaaaaa", "@expired", "Expired", "channel", installId(91), "-91 day");
+  insert.run("bbbbbbbbbbb", "@current", "Current", "video", installId(1), "-1 day");
+  insert.run("bbbbbbbbbbb", "@current", "Current", "channel", installId(1), "-1 day");
+}
+
+test("public health exposes no data and works without database or secret configuration", async (t) => {
+  const outbound = noNetwork(t);
+  const response = await worker.fetch(new Request("https://worker.test/health"), {});
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, service: "ai-slop-blocker" });
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("public privacy serves the complete standalone policy without database or network access", async (t) => {
+  const outbound = noNetwork(t);
+  const response = await worker.fetch(new Request("https://worker.test/privacy"), {});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
+  const html = await response.text();
+  assert.equal(html, privacyPolicy);
+  assert.match(html, /mailto:contact@deletecookies\.dev/);
+  assert.match(html, /disabled by default/);
+  assert.match(html, /pseudonymous reports/);
+  assert.match(html, /90 days/);
+  assert.match(html, /may be kept indefinitely/);
+  assert.doesNotMatch(html, /<script|<iframe|<img|<link\b/i);
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("stats excludes expired reports even before physical cleanup runs", async (t) => {
+  noNetwork(t);
+  const { env, sqlite } = environment(t, { STATS_KEY: ADMIN_KEY });
+  seedRetentionRows(sqlite);
+  const response = await worker.fetch(new Request("https://worker.test/stats", {
+    headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.videos.map((row) => row.videoId), ["bbbbbbbbbbb"]);
+  assert.deepEqual(body.channels.map((row) => row.channelId), ["@current"]);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 4);
+});
+
+test("authenticated manual digest deletes expired raw reports and exports only aggregates", async (t) => {
+  const outbound = github(t);
+  const { env, sqlite } = environment(t, {
+    STATS_KEY: ADMIN_KEY, GITHUB_TOKEN: "fake-github-token", REVIEW_REPO: "test/review", PUBLIC_RAW_BASE: "https://raw.test",
+  });
+  seedRetentionRows(sqlite);
+  const response = await worker.fetch(new Request("https://worker.test/digest", {
+    method: "POST", headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), env);
+  assert.equal(response.status, 200);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 2);
+  const write = outbound.mock.calls.find(({ arguments: [url, options] }) => /review\.json$/.test(url) && options?.method === "PUT");
+  const text = Buffer.from(JSON.parse(write.arguments[1].body).content, "base64").toString("utf8");
+  const digest = JSON.parse(text);
+  assert.deepEqual(digest.categories.video.map((row) => row.id), ["bbbbbbbbbbb"]);
+  assert.deepEqual(digest.categories.channel.map((row) => row.id), ["@current"]);
+  assert.doesNotMatch(text, /installId/);
+  assert.equal(text.includes(installId(1)), false);
+  assert.equal(text.includes(installId(91)), false);
+});
+
+test("daily cleanup expires reports at the ninety-day boundary even when GitHub is unconfigured", async (t) => {
+  const outbound = noNetwork(t);
+  const errors = t.mock.method(console, "error", () => {});
+  const { env, sqlite } = environment(t);
+  sqlite.prepare(`INSERT INTO submissions (videoId, scope, installId, createdAt)
+    VALUES ('aaaaaaaaaaa', 'video', ?, datetime('now', '-90 day'))`).run(installId());
+  const pending = [];
+  await worker.scheduled({}, env, { waitUntil(promise) { pending.push(promise); } });
+  await Promise.all(pending);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 0);
+  assert.equal(env.DB.prepare.mock.callCount(), 1);
+  assert.equal(errors.mock.callCount(), 0);
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("cleanup failure prevents an authenticated digest from writing to GitHub", async (t) => {
+  const outbound = noNetwork(t);
+  const env = {
+    STATS_KEY: ADMIN_KEY, GITHUB_TOKEN: "fake-github-token",
+    DB: { prepare: () => ({ run: async () => { throw new Error("cleanup unavailable"); } }) },
+  };
+  const response = await worker.fetch(new Request("https://worker.test/digest", {
+    method: "POST", headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), env);
+  assert.equal(response.status, 500);
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("the additive retention migration can be applied repeatedly without removing reports", (t) => {
+  const { sqlite } = d1(t);
+  seedRetentionRows(sqlite);
+  sqlite.exec("DROP INDEX idx_submission_created");
+  const migration = readFileSync(new URL("../backend/migrations/0001_report_retention.sql", import.meta.url), "utf8");
+  sqlite.exec(migration);
+  sqlite.exec(migration);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 4);
+  assert.deepEqual(sqlite.prepare("PRAGMA index_info('idx_submission_created')").all().map((row) => row.name), ["createdAt"]);
+});
+
+test("authenticated review returns the existing aggregate digest and markdown without writes or raw UUIDs", async (t) => {
+  const outbound = t.mock.method(globalThis, "fetch", async (url) => new Response(
+    JSON.stringify([{ id: String(url).endsWith("videos.json") ? "bbbbbbbbbbb" : "@current" }])
+  ));
+  for (const GITHUB_TOKEN of [undefined, "legacy-token-that-must-not-be-used"]) {
+    const { env, sqlite } = environment(t, {
+      STATS_KEY: ADMIN_KEY, GITHUB_TOKEN, PUBLIC_RAW_BASE: "https://raw.test",
+    });
+    seedRetentionRows(sqlite);
+    const response = await worker.fetch(new Request("https://worker.test/review", {
+      headers: { authorization: `Bearer ${ADMIN_KEY}` },
+    }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const body = await response.json();
+    assert.deepEqual(Object.keys(body).sort(), ["digest", "markdown"]);
+    assert.deepEqual(body.digest.totals, { video: 1, channel: 1, domain: 0, page: 0 });
+    assert.deepEqual(body.digest.categories.video.map((row) => row.id), ["bbbbbbbbbbb"]);
+    assert.deepEqual(body.digest.categories.channel.map((row) => row.id), ["@current"]);
+    assert.equal(body.digest.categories.video[0].listed, true);
+    assert.equal(body.digest.categories.channel[0].listed, true);
+    assert.equal(body.digest.categories.video[0].blocks, 1);
+    assert.ok(Number.isFinite(Date.parse(body.digest.generatedAt)));
+    assert.match(body.markdown, /# AI Slop review queue/);
+    assert.match(body.markdown, /bbbbbbbbbbb/);
+    assert.match(body.markdown, /via PR/);
+    const text = JSON.stringify(body);
+    assert.equal(text.includes(installId(1)), false);
+    assert.equal(text.includes(installId(91)), false);
+    assert.doesNotMatch(text, /installId/);
+    // Expired rows remain stored, proving the GET does not run retention deletion.
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM submissions").get().count, 4);
+    assert.equal(env.DB.prepare.mock.callCount(), 2);
+    for (const { arguments: [sql] } of env.DB.prepare.mock.calls) assert.match(sql, /^SELECT\b/);
+  }
+  assert.equal(outbound.mock.callCount(), 4);
+  for (const { arguments: [url, options] } of outbound.mock.calls) {
+    assert.match(url, /^https:\/\/raw\.test\/(videos|channels)\.json$/);
+    assert.equal(options?.method || "GET", "GET");
+    assert.equal(options?.headers, undefined);
+  }
+});
+
+test("POST /review is rejected without database or outbound operations", async (t) => {
+  const outbound = noNetwork(t);
+  const { env } = environment(t, { STATS_KEY: ADMIN_KEY });
+  const response = await worker.fetch(new Request("https://worker.test/review", {
+    method: "POST", headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), env);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get("allow"), "GET");
+  assert.equal(env.DB.prepare.mock.callCount(), 0);
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("review generation failures return a generic error without leaking database details", async (t) => {
+  const outbound = noNetwork(t);
+  t.mock.method(console, "error", () => {});
+  const response = await worker.fetch(new Request("https://worker.test/review", {
+    headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), {
+    STATS_KEY: ADMIN_KEY,
+    DB: { prepare: () => { throw new Error("private database details"); } },
+  });
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "review temporarily unavailable" });
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("legacy POST /digest still requires a separately configured GitHub token", async (t) => {
+  const outbound = noNetwork(t);
+  const { env } = environment(t, { STATS_KEY: ADMIN_KEY });
+  const response = await worker.fetch(new Request("https://worker.test/digest", {
+    method: "POST", headers: { authorization: `Bearer ${ADMIN_KEY}` },
+  }), env);
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).error, "GITHUB_TOKEN secret is not set");
+  assert.equal(outbound.mock.callCount(), 0);
 });
