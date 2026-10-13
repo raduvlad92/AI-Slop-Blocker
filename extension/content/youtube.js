@@ -30,17 +30,52 @@
     personalChannels: new Set(),
     communityVideos: new Set(),
     communityChannels: new Set(),
+    channelAliases: {},
   };
 
   function refreshSets(data) {
+    const action = data.settings.watchAction || "overlay";
+    if (state.watchAction !== action) {
+      enforcedVideoId = null;
+      clearWatchOverlay();
+    }
     state.enabled = data.settings.hideYouTube;
     state.showCardButtons = !!data.settings.showCardButtons;
-    state.watchAction = data.settings.watchAction || "overlay";
+    state.watchAction = action;
     state.blockedCount = data.blockedCount;
     state.personalVideos = new Set(Object.keys(data.personal.videos));
-    state.personalChannels = new Set(Object.keys(data.personal.channels));
+    state.channelAliases = data.channelAliases || {};
+    state.personalChannels = new Set(Object.keys(data.personal.channels).map(channelKey).filter(Boolean));
     state.communityVideos = new Set(data.community.videos);
-    state.communityChannels = new Set(data.community.channels);
+    state.communityChannels = new Set(data.community.channels.map(channelKey).filter(Boolean));
+    resolveListedChannels(data);
+  }
+
+  function channelKey(id) {
+    return ASBChannels.canonical(id, state.channelAliases);
+  }
+
+  const identityAttempts = new Map();
+  let resolvingChannels = false;
+  function resolveListedChannels(data) {
+    if (resolvingChannels) return;
+    const now = Date.now();
+    const ids = [...new Set([...Object.keys(data.personal.channels), ...data.community.channels])]
+      .map((id) => ASBChannels.normalize(id)).filter(Boolean)
+      .filter((id) => {
+        const cached = state.channelAliases[id];
+        return !(ASBChannels.normalize(cached?.id)?.startsWith("UC") && cached.resolvedAt > now - ASBChannels.CACHE_MS) &&
+          !(identityAttempts.get(id) > now - 5 * 60 * 1000);
+      }).slice(0, 20);
+    if (!ids.length || !state.enabled) return;
+    ids.forEach((id) => identityAttempts.set(id, now));
+    resolvingChannels = true;
+    // The worker caches identities and broadcasts the update. Failed lookups
+    // keep the existing ID/handle match and never affect local persistence.
+    chrome.runtime.sendMessage({ type: "asb-resolve-channels", ids }).catch(() => {}).finally(() => {
+      resolvingChannels = false;
+      ASB.getState().then(refreshSets).catch(() => {});
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -53,8 +88,7 @@
   function extractInfo(card) {
     const info = { videoId: null, channelId: null, channelName: null };
 
-    const link = card.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
-    if (link) {
+    for (const link of card.querySelectorAll("a[href]")) {
       try {
         const url = new URL(link.getAttribute("href"), location.origin);
         if (url.pathname === "/watch") {
@@ -62,17 +96,12 @@
         } else if (url.pathname.startsWith("/shorts/")) {
           info.videoId = url.pathname.split("/")[2] || null;
         }
+        if (/^[A-Za-z0-9_-]{11}$/.test(info.videoId || "")) break;
+        info.videoId = null;
       } catch { /* malformed href — leave null */ }
     }
 
-    // channelId is a UC… id when the card links /channel/, otherwise the
-    // @handle. The blocklists store whichever form we saw — both are stable.
-    const chLink = card.querySelector('a[href^="/channel/"], a[href^="/@"]');
-    if (chLink) {
-      const path = chLink.getAttribute("href") || "";
-      if (path.startsWith("/channel/")) info.channelId = path.split("/")[2] || null;
-      else if (path.startsWith("/@")) info.channelId = path.split("/")[1] || null;
-    }
+    info.channelId = channelLinkInfo(card)?.id || null;
 
     const nameEl = card.querySelector(
       "ytd-channel-name a, ytd-channel-name #text, #channel-name a, " +
@@ -85,20 +114,53 @@
     return info;
   }
 
+  function channelLinkInfo(root) {
+    for (const link of root.querySelectorAll("a[href]")) {
+      const href = link.getAttribute("href");
+      if (!/^(?:https?:\/\/(?:www\.|m\.)?youtube\.com)?\/(?:channel\/|@)/.test(href || "")) continue;
+      const id = ASBChannels.normalize(href);
+      if (id) return { id, link };
+    }
+    return null;
+  }
+
+  function isShortsPage() {
+    return /^\/shorts\/[A-Za-z0-9_-]{11}(?:\/|$)/.test(location.pathname);
+  }
+
+  function activeShort() {
+    const id = location.pathname.split("/")[2];
+    const renderers = [...document.querySelectorAll("ytd-reel-video-renderer")];
+    const matching = renderers.find((el) => el.getAttribute("video-id") === id);
+    if (matching) return matching;
+    const active = document.querySelector("ytd-reel-video-renderer[is-active], ytd-reel-video-renderer[active]");
+    if (active && !active.hasAttribute("video-id")) return active;
+    return renderers.length === 1 && !renderers[0].hasAttribute("video-id") ? renderers[0] : null;
+  }
+
+  function playbackRoot() {
+    return isShortsPage() ? activeShort() : document;
+  }
+
   // The main video on a watch page isn't a card — its identity comes from the
   // URL and the owner row under the player.
   function watchPageInfo() {
     const info = { videoId: null, channelId: null, channelName: null };
-    info.videoId = new URLSearchParams(location.search).get("v");
-
-    const chLink = document.querySelector(
-      'ytd-watch-metadata #owner a[href^="/channel/"], ytd-watch-metadata #owner a[href^="/@"]'
-    );
-    if (chLink) {
-      const path = chLink.getAttribute("href") || "";
-      if (path.startsWith("/channel/")) info.channelId = path.split("/")[2] || null;
-      else if (path.startsWith("/@")) info.channelId = path.split("/")[1] || null;
+    if (isShortsPage()) {
+      info.videoId = location.pathname.split("/")[2];
+      const root = activeShort();
+      if (!root) return info;
+      const channel = channelLinkInfo(root);
+      info.channelId = channel?.id || null;
+      info.channelName = channel?.link.textContent.trim().slice(0, 100) || info.channelId;
+      return info;
     }
+    info.videoId = new URLSearchParams(location.search).get("v");
+    const flexyId = document.querySelector("ytd-watch-flexy[video-id]")?.getAttribute("video-id");
+    if (flexyId && flexyId !== info.videoId) return info;
+
+    const owner = document.querySelector("ytd-watch-metadata #owner");
+    info.channelId = owner ? channelLinkInfo(owner)?.id || null : null;
 
     const nameEl = document.querySelector("ytd-watch-metadata #owner ytd-channel-name a");
     if (nameEl) info.channelName = nameEl.textContent.trim().slice(0, 100) || null;
@@ -113,7 +175,7 @@
       (info.videoId &&
         (state.personalVideos.has(info.videoId) || state.communityVideos.has(info.videoId))) ||
       (info.channelId &&
-        (state.personalChannels.has(info.channelId) || state.communityChannels.has(info.channelId)))
+        (state.personalChannels.has(channelKey(info.channelId)) || state.communityChannels.has(channelKey(info.channelId))))
     );
   }
 
@@ -149,10 +211,8 @@
   }
 
   function injectButton(card) {
-    if (card.dataset.asbBtn) return;
     const thumb = findThumb(card);
-    if (!thumb) return;
-    card.dataset.asbBtn = "1";
+    if (!thumb || thumb.querySelector(".asb-btn")) return;
 
     if (getComputedStyle(thumb).position === "static") {
       thumb.style.position = "relative";
@@ -169,8 +229,11 @@
   // expands the pill to the right, revealing the two block actions in place —
   // no dropdown, so nothing can render below the fold.
   function injectWatchButton() {
-    if (location.pathname !== "/watch") return;
-    const owner = document.querySelector("ytd-watch-metadata #owner");
+    if (location.pathname !== "/watch" && !isShortsPage()) return;
+    const short = isShortsPage() ? activeShort() : null;
+    const owner = short
+      ? short.querySelector("yt-reel-channel-bar-view-model, .ytReelChannelBarViewModelHost, ytd-reel-player-header-renderer, #channel-name") || channelLinkInfo(short)?.link.parentElement
+      : document.querySelector("ytd-watch-metadata #owner");
     if (!owner || owner.querySelector(".asb-watch")) return;
 
     const wrap = document.createElement("div");
@@ -240,7 +303,7 @@
   document.addEventListener(
     "click",
     (e) => {
-      if (e.target instanceof Element && e.target.closest(".asb-watch")) return;
+      if (e.target instanceof Element && e.target.closest(".asb-watch, .asb-menu")) return;
       closeMenu();
     },
     { capture: true }
@@ -274,7 +337,7 @@
     }
     if (!menu.children.length) return; // couldn't identify the card — do nothing
 
-    menu.addEventListener("click", (e) => e.stopPropagation(), { capture: true });
+    menu.addEventListener("click", (e) => e.stopPropagation());
     container.appendChild(menu);
     openMenuEl = menu;
   }
@@ -289,40 +352,17 @@
     // isn't hidden, but it's list-blocked everywhere it appears from now on.)
     if (card) hideCard(card);
 
-    // 2. Persist to the local block list + bump the counter.
-    const data = await ASB.getState();
-    const now = Date.now();
-    if (info.videoId) {
-      data.personal.videos[info.videoId] = { channelName: info.channelName || "", addedAt: now };
-    }
-    if (scope === "channel" && info.channelId) {
-      data.personal.channels[info.channelId] = { name: info.channelName || "", addedAt: now };
-    }
-    data.blockedCount += 1;
-    await chrome.storage.local.set({
-      personal: data.personal,
-      blockedCount: data.blockedCount,
-    });
-    refreshSets(data);
-    processAll(); // channel blocks should sweep the rest of the page too
-    ASB.logEvent("video", blockedMinutes(card)); // badge + stats, fire-and-forget
-
-    // 3. Satisfying toast with the running counter.
-    const n = data.blockedCount;
-    showToast(`Blocked. You've hidden ${n} AI ${n === 1 ? "video" : "videos"} 🎉`);
-
-    // 4. Fire-and-forget submission to the backend (relayed via background).
     try {
-      chrome.runtime.sendMessage({
-        type: "asb-submit",
-        payload: {
-          videoId: info.videoId,
-          channelId: info.channelId,
-          channelName: info.channelName,
-          scope,
-        },
-      });
-    } catch { /* extension reloading — local block already succeeded */ }
+      // The background owns the list, counter, event and best-effort report.
+      const saved = await ASB.block(scope, info, blockedMinutes(card));
+      refreshSets(await ASB.getState());
+      processAll();
+      const n = saved.blockedCount;
+      showToast(`Blocked. You've hidden ${n} AI ${n === 1 ? "video" : "videos"} 🎉`);
+    } catch {
+      if (card) card.classList.remove("asb-hidden");
+      showToast("Couldn't save this block. Please try again.");
+    }
   }
 
   // Estimated length of the blocked video, for the "brain rot avoided" stat.
@@ -338,7 +378,7 @@
           return Math.max(1, Math.round((+(m[1] || 0)) * 60 + +m[2] + +m[3] / 60));
         }
       } else {
-        const d = document.querySelector("video.html5-main-video")?.duration;
+        const d = playbackRoot()?.querySelector("video.html5-main-video")?.duration;
         if (Number.isFinite(d) && d > 0) return Math.max(1, Math.round(d / 60));
       }
     } catch { /* fall through to the estimate */ }
@@ -379,36 +419,38 @@
   // -------------------------------------------------------------------------
 
   let enforcedVideoId = null; // the chosen action has FIRED for this video
-  let watchBlocked = false; // current watch video is blocked (play-guard flag)
   let overlayEl = null;
 
   function pauseVideo() {
-    document.querySelector("video.html5-main-video")?.pause();
+    playbackRoot()?.querySelector("video.html5-main-video")?.pause();
   }
 
   function enforceWatchBlock() {
     if (!state.enabled) return;
-    if (location.pathname !== "/watch") {
-      watchBlocked = false;
+    if (location.pathname !== "/watch" && !isShortsPage()) {
+      clearWatchOverlay();
+      enforcedVideoId = null;
       return;
     }
     const info = watchPageInfo();
     if (!info.videoId) return;
 
     if (!isBlocked(info)) {
-      watchBlocked = false;
       clearWatchOverlay();
       enforcedVideoId = null;
       return;
     }
 
     // Contain immediately, before (and independently of) the chosen action:
-    // the play-guard in init() now keeps this video paused no matter how
-    // often YouTube tries to start it.
-    watchBlocked = true;
+    // the play-guard in init() checks the current identity and keeps it paused
+    // no matter how often YouTube tries to start it.
     pauseVideo();
 
-    if (enforcedVideoId === info.videoId) return;
+    if (enforcedVideoId === info.videoId) {
+      // Player DOM may be replaced while the URL remains unchanged.
+      if (state.watchAction === "overlay") showWatchOverlay();
+      return;
+    }
 
     // enforcedVideoId is only set once the action actually fires — the next
     // button / sidebar render async, so failed attempts retry on every scan
@@ -423,6 +465,10 @@
         break;
       case "next": {
         showWatchOverlay("Skipping to the next video…");
+        if (isShortsPage()) {
+          if (playNextShort()) enforcedVideoId = info.videoId;
+          break;
+        }
         // The next button is an <a>; clicking it triggers YouTube's SPA
         // router. Its href is only set once player data has loaded.
         const nextBtn = document.querySelector("a.ytp-next-button");
@@ -439,13 +485,13 @@
         if (playFirstSidebar()) enforcedVideoId = info.videoId;
         break;
       default: // "overlay"
-        enforcedVideoId = info.videoId;
-        showWatchOverlay();
+        if (showWatchOverlay()) enforcedVideoId = info.videoId;
     }
   }
 
   // Click the first sidebar recommendation that isn't itself blocked.
   function playFirstSidebar() {
+    if (isShortsPage()) return playNextShort();
     const cards = document.querySelectorAll(
       "#secondary ytd-compact-video-renderer, #secondary yt-lockup-view-model"
     );
@@ -460,12 +506,20 @@
     return false;
   }
 
+  function playNextShort() {
+    const next = document.querySelector("#navigation-button-down button, button#navigation-button-down");
+    if (!next || next.disabled) return false;
+    next.click();
+    return true;
+  }
+
   function showWatchOverlay(subText) {
     pauseVideo();
-    if (overlayEl?.isConnected) return;
-
-    const player = document.querySelector("#movie_player");
-    if (!player) return;
+    const root = playbackRoot();
+    const player = root?.querySelector("#movie_player, .html5-video-player");
+    if (!player) return false;
+    if (overlayEl?.isConnected && player.contains(overlayEl)) return true;
+    clearWatchOverlay();
 
     overlayEl = document.createElement("div");
     overlayEl.className = "asb-player-overlay";
@@ -480,6 +534,7 @@
     sub.textContent = subText || "This video or its channel is on your block list.";
     overlayEl.append(emoji, title, sub);
     player.appendChild(overlayEl);
+    return true;
   }
 
   function clearWatchOverlay() {
@@ -496,7 +551,10 @@
     try {
       document.querySelectorAll(CARD_SELECTORS).forEach((card) => {
         const info = extractInfo(card);
-        if (!info.videoId && !info.channelId) return;
+        if (!info.videoId && !info.channelId) {
+          card.classList.remove("asb-hidden");
+          return;
+        }
         if (isBlocked(info)) {
           hideCard(card);
         } else {
@@ -527,12 +585,13 @@
     new MutationObserver(scheduleScan).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ["href", "video-id", "is-active", "active"],
     });
     // SPA navigation: YouTube swaps content without a page load.
     window.addEventListener("yt-navigate-finish", () => {
       closeMenu();
       clearWatchOverlay();
-      watchBlocked = false;
       enforcedVideoId = null;
       processAll();
     });
@@ -543,7 +602,9 @@
     document.addEventListener(
       "play",
       (e) => {
-        if (watchBlocked && e.target instanceof HTMLVideoElement) e.target.pause();
+        if (state.enabled && (location.pathname === "/watch" || isShortsPage()) &&
+            e.target instanceof HTMLVideoElement && playbackRoot()?.contains(e.target) &&
+            isBlocked(watchPageInfo())) e.target.pause();
       },
       true
     );
@@ -575,7 +636,6 @@
     } else {
       unhideAll();
       clearWatchOverlay();
-      watchBlocked = false;
       enforcedVideoId = null;
     }
   }

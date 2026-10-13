@@ -15,6 +15,7 @@ const ASB = {
       watchAction: "overlay",
     },
     personal: { videos: {}, channels: {} },
+    channelAliases: {},
     community: { videos: [], channels: [], syncedAt: 0 },
     blockedCount: 0,
     // Event log powering the icon badge and the stats views:
@@ -22,18 +23,19 @@ const ASB = {
     events: [],
   },
 
-  // Append an event to the log (badge + stats). Pruned to 90 days / 5000
-  // entries so storage stays small.
+  // The background worker owns mutations so multiple tabs cannot overwrite
+  // one another's blocks or stats. A block includes its stats event.
+  async block(scope, info, mins) {
+    const response = await chrome.runtime.sendMessage({ type: "asb-block", scope, info, mins });
+    if (!response?.ok) throw new Error(response?.error || "Could not save block");
+    return response;
+  },
+
+  // Append a separate event (Google Overview, badge + stats). Pruning and
+  // serialization happen in the background worker.
   async logEvent(kind, mins) {
     try {
-      const { events } = await chrome.storage.local.get({ events: [] });
-      const evt = { t: Date.now(), kind };
-      if (mins) evt.mins = mins;
-      events.push(evt);
-      const cutoff = Date.now() - 90 * 864e5;
-      await chrome.storage.local.set({
-        events: events.filter((e) => e.t >= cutoff).slice(-5000),
-      });
+      await chrome.runtime.sendMessage({ type: "asb-log-event", kind, mins });
     } catch { /* stats are best-effort, never break blocking */ }
   },
 

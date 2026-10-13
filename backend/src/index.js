@@ -1,6 +1,6 @@
 // AI Slop Blocker — submission collector.
-// Cloudflare Worker + D1. No auth, no PII: installId is a random client-side
-// UUID used only for rate limiting and dedupe.
+// Cloudflare Worker + D1. Public submissions, protected admin endpoints.
+// installId is a client-side UUID used for rate limiting and dedupe.
 
 const DAILY_LIMIT = 50; // submissions per installId per rolling 24h
 const MAX_BODY_BYTES = 2048;
@@ -11,17 +11,17 @@ const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const CHANNEL_ID_RE = /^(UC[A-Za-z0-9_-]{22}|@[A-Za-z0-9._-]{1,50})$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
+function json(body, status = 200, headers = {}) {
+  return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json",
-      // The extension's background worker fetches with host_permissions so
-      // CORS isn't strictly needed, but being permissive here costs nothing
-      // for a write-only, no-credentials endpoint.
+      "cache-control": "no-store",
+      // Admin endpoints still require an explicit bearer credential.
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "POST, GET, OPTIONS",
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers": "content-type, authorization",
+      ...headers,
     },
   });
 }
@@ -35,17 +35,20 @@ export default {
       return handleSubmit(request, env);
     }
     if (request.method === "GET" && url.pathname === "/stats") {
-      return handleStats(url, env);
+      return handleStats(request, env);
     }
-    if (request.method === "GET" && url.pathname === "/digest") {
-      return handleDigest(url, env);
+    if (url.pathname === "/digest") {
+      if (request.method !== "POST") {
+        return json({ error: "use POST /digest" }, 405, { allow: "POST" });
+      }
+      return handleDigest(request, env);
     }
     return json({ error: "not found" }, 404);
   },
 
   // Daily cron (see wrangler.toml [triggers]): push the review digest to the
   // private GitHub repo. A failed run just waits for tomorrow (or a manual
-  // GET /digest) — never throws.
+  // POST /digest) — never throws.
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(
       buildAndPushDigest(env).catch((err) => console.error("digest failed:", err.message))
@@ -53,10 +56,99 @@ export default {
   },
 };
 
+async function requireAdmin(request, env) {
+  if (typeof env.STATS_KEY !== "string" || !env.STATS_KEY.trim()) {
+    return json({ error: "admin access is not configured" }, 503);
+  }
+  const credential = /^Bearer (\S+)$/i.exec(request.headers.get("authorization") || "");
+  if (credential) {
+    // Compare fixed-length hashes without stopping at the first differing byte.
+    const hashes = await Promise.all(
+      [credential[1], env.STATS_KEY].map((s) =>
+        crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))
+      )
+    );
+    const [actual, expected] = hashes.map((h) => new Uint8Array(h));
+    let different = 0;
+    for (let i = 0; i < actual.length; i++) different |= actual[i] ^ expected[i];
+    if (!different) return null;
+  }
+  return json({ error: "unauthorized" }, 401, { "www-authenticate": "Bearer" });
+}
+
+async function limitSubmissions(request, env) {
+  const network = request.headers.get("cf-connecting-ip");
+  // This header is supplied by Cloudflare on public Worker requests. Never
+  // substitute caller-controlled X-Forwarded-For or the client installId.
+  if (
+    !network ||
+    typeof env.SUBMISSION_NETWORK_LIMITER?.limit !== "function" ||
+    typeof env.SUBMISSION_BUDGET?.limit !== "function"
+  ) {
+    return json({ ok: false, error: "submissions temporarily unavailable" }, 503);
+  }
+  try {
+    // Only a daily-changing hash reaches the short-lived edge counter. The
+    // address and this counter key are never written to D1 or the review repo.
+    const day = new Date().toISOString().slice(0, 10);
+    const hash = await crypto.subtle.digest(
+      "SHA-256", new TextEncoder().encode(`asb-submit:${day}:${network}`)
+    );
+    const key = Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
+    const networkLimit = await env.SUBMISSION_NETWORK_LIMITER.limit({ key });
+    // Reject a noisy source before it can consume the shared request budget.
+    if (!networkLimit.success) return submissionThrottled();
+    const budget = await env.SUBMISSION_BUDGET.limit({ key: "asb-submit" });
+    if (!budget.success) return submissionThrottled();
+    return null;
+  } catch {
+    console.error("submission rate limiter unavailable");
+    return json({ ok: false, error: "submissions temporarily unavailable" }, 503);
+  }
+}
+
+function submissionThrottled() {
+  return json(
+    { ok: true, accepted: false, reason: "too many reports — your local blocks still work!" },
+    429,
+    { "retry-after": "60" }
+  );
+}
+
+async function readLimitedBody(request) {
+  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > MAX_BODY_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function handleSubmit(request, env) {
+  const throttled = await limitSubmissions(request, env);
+  if (throttled) return throttled;
   // --- Parse + validate (reject malformed payloads cheaply, before D1) ---
-  const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) return json({ ok: false, error: "payload too large" }, 413);
+  let raw;
+  try {
+    raw = await readLimitedBody(request);
+  } catch {
+    return json({ ok: false, error: "invalid request body" }, 400);
+  }
+  if (raw === null) return json({ ok: false, error: "payload too large" }, 413);
 
   let body;
   try {
@@ -86,40 +178,39 @@ async function handleSubmit(request, env) {
       ? channelName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 100) || null
       : null;
 
-  // --- Rate limit: polite rejection over the daily cap ---
-  const { count } = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM submissions WHERE installId = ?1 AND createdAt > datetime('now', '-1 day')"
-  )
-    .bind(installId)
-    .first();
-
-  if (count >= DAILY_LIMIT) {
-    return json(
-      { ok: true, accepted: false, reason: "daily limit reached — your local blocks still work!" },
-      429
-    );
-  }
-
-  // --- Insert; partial unique indexes make repeats a no-op (dedupe) ---
+  // Count and conditional insert run as one SQLite statement, so concurrent
+  // requests cannot both spend the last daily slot. Partial unique indexes
+  // still make repeated video/channel reports a no-op.
   const result = await env.DB.prepare(
     `INSERT OR IGNORE INTO submissions (videoId, channelId, channelName, scope, installId)
-     VALUES (?1, ?2, ?3, ?4, ?5)`
+     SELECT ?1, ?2, ?3, ?4, ?5
+     WHERE (SELECT COUNT(*) FROM submissions
+            WHERE installId = ?5 AND createdAt > datetime('now', '-1 day')) < ?6`
   )
-    .bind(videoId, cleanChannelId, cleanChannelName, scope, installId)
+    .bind(videoId, cleanChannelId, cleanChannelName, scope, installId.toLowerCase(), DAILY_LIMIT)
     .run();
 
   const accepted = result.meta.changes > 0;
+  if (!accepted) {
+    // This follow-up only explains a rejected write; it does not enforce the
+    // quota, which was checked atomically inside the INSERT above.
+    const { count } = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM submissions WHERE installId = ?1 AND createdAt > datetime('now', '-1 day')"
+    ).bind(installId.toLowerCase()).first();
+    if (count >= DAILY_LIMIT) {
+      return json(
+        { ok: true, accepted: false, reason: "daily limit reached — your local blocks still work!" },
+        429
+      );
+    }
+  }
   return json({ ok: true, accepted, ...(accepted ? {} : { reason: "duplicate" }) });
 }
 
 // Manual-review helper: top submitted videos/channels by distinct submitters.
-// If a STATS_KEY secret is configured (wrangler secret put STATS_KEY), the
-// endpoint requires ?key=<value>; otherwise it's open (fine for MVP — the
-// data is anonymous aggregates).
-async function handleStats(url, env) {
-  if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
-    return json({ error: "unauthorized" }, 401);
-  }
+async function handleStats(request, env) {
+  const unauthorized = await requireAdmin(request, env);
+  if (unauthorized) return unauthorized;
 
   const [videos, channels] = await Promise.all([
     env.DB.prepare(
@@ -143,10 +234,9 @@ async function handleStats(url, env) {
 // grows website blocking.
 // ---------------------------------------------------------------------------
 
-async function handleDigest(url, env) {
-  if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
-    return json({ error: "unauthorized" }, 401);
-  }
+async function handleDigest(request, env) {
+  const unauthorized = await requireAdmin(request, env);
+  if (unauthorized) return unauthorized;
   try {
     return json({ ok: true, ...(await buildAndPushDigest(env)) });
   } catch (err) {
@@ -259,7 +349,7 @@ function buildMarkdown(digest) {
   return [
     "# AI Slop review queue",
     "",
-    `Generated ${digest.generatedAt} — full snapshot, ranked by distinct installs that blocked each item.`,
+    `Generated ${digest.generatedAt} — full snapshot, ranked by distinct submitted install identifiers for each item.`,
     "",
     "Legend: 🆕 activity in the last 24h · ✅ already on the public blocklist.",
     "",

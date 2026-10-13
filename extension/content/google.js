@@ -1,11 +1,8 @@
 // Hides Google's AI Overview / SGE box on search result pages.
 //
-// Strategy (most → least resilient):
-//   1. Structural: find a heading whose text is exactly "AI Overview", then
-//      climb to the block-level container that sits directly under a known
-//      results boundary (#center_col / #rcnt / #search).
-//   2. Fallback: known container selectors (these rot when Google ships new
-//      markup — they're a backstop, not the primary signal).
+// Find an exact AI Overview heading and its smallest self-contained answer
+// container. A generic Google module attribute is not enough evidence to hide
+// anything, and a container with any linked result heading is never hidden.
 //
 // Everything is wrapped so a markup change fails silently and never breaks
 // the page. Deliberately does NOT touch regular organic results.
@@ -15,13 +12,14 @@
 
   const HIDDEN_ATTR = "data-asb-hidden";
 
-  // Known AI Overview container selectors as of mid-2026. Expected to rot;
-  // the structural detection above is the real workhorse.
-  const FALLBACK_SELECTORS = ["#m-x-content", "div[data-mcpr]"];
-
-  // Boundaries we climb up to — the AI Overview block is a direct child of
-  // one of these.
-  const BOUNDARIES = ["#center_col", "#rcnt", "#search", "#rso"];
+  // Never hide these shared result containers, even if their only current
+  // content happens to be the overview. More results may arrive later.
+  const BOUNDARIES = "#center_col, #rcnt, #search, #rso, body, html";
+  const HEADINGS = 'h1, h2, [role="heading"], strong';
+  const RESULT_HEADINGS =
+    'a h1, a h2, a h3, a h4, a h5, a h6, a [role="heading"], ' +
+    'h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [role="heading"] a';
+  const CONTROLS = 'button, a, input, select, textarea, svg, script, style, [role="button"]';
 
   // ASSUMPTION: English-only text match for now. Localized UIs use translated
   // labels ("Vue d'ensemble de l'IA", etc.) — add them here as reported.
@@ -36,50 +34,68 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
-  function findByStructure() {
-    const headings = document.querySelectorAll('h1, h2, [role="heading"], strong');
-    for (const h of headings) {
-      const text = (h.textContent || "").trim().toLowerCase();
-      if (!LABELS.has(text)) continue;
+  function isOverviewHeading(heading) {
+    return LABELS.has((heading.textContent || "").trim().toLowerCase()) &&
+      !heading.closest("a");
+  }
 
-      // Climb to the child of the nearest boundary element (capped depth so a
-      // weird DOM can't send us to <body>).
-      let el = h;
-      for (let depth = 0; depth < 20 && el.parentElement; depth++) {
-        const parent = el.parentElement;
-        if (BOUNDARIES.some((sel) => parent.matches?.(sel)) || parent === document.body) {
-          return el === h ? null : el; // never hide the bare heading's own parent chain root = body
+  // Ignore toolbar buttons and citation links when deciding whether there is
+  // answer content beside the heading. A heading-only wrapper is not a box.
+  function contentText(node) {
+    if (node.nodeType === 3) return node.textContent || "";
+    if (node.nodeType !== 1 || node.matches(CONTROLS)) return "";
+    return Array.from(node.childNodes, contentText).join(" ");
+  }
+
+  function hasAnswerContent(container, heading) {
+    let headingBranch = heading;
+    while (headingBranch.parentElement !== container) {
+      headingBranch = headingBranch.parentElement;
+      if (!headingBranch) return false;
+    }
+    return Array.from(container.childNodes).some(
+      (node) => node !== headingBranch && contentText(node).trim()
+    );
+  }
+
+  function isSafeContainer(container) {
+    return !container.matches(BOUNDARIES) &&
+      !container.querySelector(RESULT_HEADINGS);
+  }
+
+  function findOverviewContainers() {
+    const containers = new Set();
+    for (const heading of document.querySelectorAll(HEADINGS)) {
+      if (!isOverviewHeading(heading)) continue;
+      let container = heading.parentElement;
+      for (let depth = 0; container && depth < 20; depth++) {
+        // Every ancestor of an unsafe container would also contain its
+        // organic result. Stop here instead of considering a bigger wrapper.
+        if (!isSafeContainer(container)) break;
+        if (hasAnswerContent(container, heading)) {
+          containers.add(container);
+          break;
         }
-        el = parent;
+        container = container.parentElement;
       }
     }
-    return null;
-  }
-
-  function findAIOverview() {
-    const structural = findByStructure();
-    if (structural) return structural;
-    for (const sel of FALLBACK_SELECTORS) {
-      const el = document.querySelector(sel);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  // Safety valve: if the candidate contains several organic result titles
-  // (result links wrap an <h3>), we grabbed too big a container — abort
-  // rather than blank out the results page.
-  function looksSafeToHide(el) {
-    return el.querySelectorAll("a h3").length <= 2;
+    return containers;
   }
 
   function hideAIOverview() {
     if (!enabled) return;
     try {
-      const el = findAIOverview();
-      if (el && !el.hasAttribute(HIDDEN_ATTR) && looksSafeToHide(el)) {
-        el.setAttribute(HIDDEN_ATTR, "1");
-        ASB.logEvent("overview"); // badge + stats, once per hidden box
+      const containers = findOverviewContainers();
+      // Google can reuse a module or inject results into a previously safe
+      // box. Restore it as soon as it no longer qualifies.
+      document.querySelectorAll(`[${HIDDEN_ATTR}]`).forEach((el) => {
+        if (!containers.has(el)) el.removeAttribute(HIDDEN_ATTR);
+      });
+      for (const el of containers) {
+        if (!el.hasAttribute(HIDDEN_ATTR)) {
+          el.setAttribute(HIDDEN_ATTR, "1");
+          ASB.logEvent("overview"); // badge + stats, once per hidden box
+        }
       }
     } catch {
       // fail silently, never break the page

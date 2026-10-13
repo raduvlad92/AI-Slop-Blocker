@@ -1,4 +1,5 @@
-// Options page logic — vanilla JS, reads/writes chrome.storage.local directly.
+// Options page logic — vanilla JS. List mutations go through the background
+// worker; settings and rendering use chrome.storage.local directly.
 
 const DEFAULTS = {
   settings: {
@@ -77,10 +78,16 @@ function renderList(listEl, countEl, entries, labelFn, storageKey) {
     btn.className = "remove-btn";
     btn.textContent = "Remove";
     btn.addEventListener("click", async () => {
-      const { personal } = await chrome.storage.local.get({ personal: DEFAULTS.personal });
-      delete personal[storageKey][id];
-      await chrome.storage.local.set({ personal });
-      render();
+      btn.disabled = true;
+      try {
+        const response = await chrome.runtime.sendMessage({ type: "asb-remove-block", storageKey, id });
+        if (!response?.ok) throw new Error(response?.error || "Could not remove block");
+      } catch (err) {
+        console.warn("[ASB] block removal failed:", err.message);
+      } finally {
+        btn.disabled = false;
+        render();
+      }
     });
 
     li.append(label, btn);

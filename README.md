@@ -17,7 +17,7 @@ No accounts. No payments. No tracking. Your block list, settings, and stats
 live in `chrome.storage.local` on your device — we never see your browsing,
 your identity, or your watch history.
 
-The **one** thing the extension ever sends anywhere: when you block a video or
+When you block a video or
 channel, an anonymous report — `{videoId, channelId, scope}` plus a random
 UUID generated at install (used only for rate limiting, tied to nothing) —
 goes to our server.
@@ -59,6 +59,13 @@ manually to prevent abuse — see
    see [blocklist/CONTRIBUTING.md](blocklist/CONTRIBUTING.md)). A GitHub
    Action validates the JSON on every PR.
 
+Channel matching resolves blocked channels' public YouTube metadata without
+cookies, caches their canonical `UC…` IDs and current handles for seven days,
+and keeps existing personal/community blocks tied to the resolved creator.
+Only channels already on a block list are looked up. Failed lookups preserve
+the existing ID/handle match. Directly opened Shorts use the same block button
+and playback protection; their next-video action uses Shorts navigation.
+
 ## Running the extension locally
 
 1. `chrome://extensions` → enable Developer mode → **Load unpacked** →
@@ -89,7 +96,7 @@ manifest.json is strict JSON so the justifications live here:
 | `storage` | Personal block list, settings, slop counter, cached community list — all local. |
 | `alarms` | The 6-hour community blocklist re-sync. |
 | `*://*.google.com/search*` | Content script that hides the AI Overview box. Scoped to search pages only. |
-| `*://*.youtube.com/*` | Content script for the block button + filtering. |
+| `*://*.youtube.com/*` | Block button, filtering and anonymous public metadata lookups for blocked channels. |
 | `https://raw.githubusercontent.com/*` | Fetching the public blocklist JSON (unauthenticated, public files). |
 | `https://aislopblocker-api…workers.dev/*` | Fire-and-forget anonymous block submissions. |
 
@@ -98,3 +105,23 @@ manifest.json is strict JSON so the justifications live here:
 - No AI-detection heuristics for regular Google results — too unreliable.
 - No accounts, logins, or payments, ever.
 - No automatic promotion of submissions into the public blocklist.
+
+## Development checks
+
+With Node 22.13 or later, no dependency installation is needed:
+
+```sh
+npm test
+npm run validate
+npm run test:browser
+```
+
+Open `http://127.0.0.1:8766/` for browser regressions. If that port is busy,
+use `ASB_TEST_PORT=8767 npm run test:browser`. The browser suite runs the actual
+extension scripts against controlled DOM fixtures with mocked Chrome APIs and
+network responses; it never sends reports. Node tests cover storage races,
+Google safety, identity resolution and backend authentication/quotas, including
+real in-memory SQLite for the SQL. These checks complement manual unpacked
+extension testing on live Google/YouTube.
+
+See [ROADMAP.md](ROADMAP.md) for the selected implementation batch and parked work.

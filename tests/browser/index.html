@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AI Slop Blocker browser regressions</title>
+  <style>
+    body { font: 15px/1.5 system-ui; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    .pass { color: #166534; } .fail { color: #b91c1c; }
+    iframe { width: 900px; max-width: 100%; height: 300px; border: 1px solid #ddd; }
+  </style>
+  <script src="/extension/content/channel-identity.js"></script>
+</head>
+<body>
+  <h1>Browser regression checks</h1>
+  <p>Actual extension scripts, controlled DOM fixtures and mocked Chrome/network APIs. No reports are sent.</p>
+  <p id="summary">Running…</p>
+  <ol id="results"></ol>
+  <div id="fixtures"></div>
+  <script src="/tests/browser/cases.js"></script>
+</body>
+</html>
