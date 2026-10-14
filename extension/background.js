@@ -1,6 +1,6 @@
 // Background service worker (MV3).
 // Responsibilities:
-//   1. First-install setup: local defaults; reporting requires an explicit opt-in.
+//   1. First-install setup: local UUID and defaults; reporting requires an explicit opt-in.
 //   2. Periodic community-blocklist sync via chrome.alarms.
 //   3. Relaying block submissions to the backend (content scripts message us;
 //      doing the fetch here keeps network access + retry logic in one place).
@@ -47,6 +47,11 @@ function appendEvent(events, kind, mins, now = Date.now()) {
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const CHANNEL_ID_RE = /^(UC[A-Za-z0-9_-]{22}|@[^\s/?#]{1,100})$/u;
+const INSTALL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validInstallId(id) {
+  return typeof id === "string" && INSTALL_ID_RE.test(id);
+}
 
 function validId(id, kind) {
   return typeof id === "string" &&
@@ -126,12 +131,10 @@ async function setReporting(msg) {
   if (typeof msg.enabled !== "boolean") throw new Error("Invalid reporting choice");
   const reportingConsent = { enabled: msg.enabled, updatedAt: Date.now() };
   const change = { reportingConsent };
-  if (msg.enabled) {
-    const { installId } = await chrome.storage.local.get("installId");
-    // The identifier is created only after the user affirmatively opts in.
-    // Existing identifiers remain local until that same explicit choice.
-    if (!installId) change.installId = crypto.randomUUID();
-  }
+  const { installId } = await chrome.storage.local.get("installId");
+  // Repair older missing/invalid state inside the same mutation queue as
+  // installation setup. The UUID stays local while reporting is disabled.
+  if (!validInstallId(installId)) change.installId = crypto.randomUUID();
   await chrome.storage.local.set(change);
   return { ok: true, reportingConsent };
 }
@@ -164,17 +167,15 @@ let resolveChannelIdentities;
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  const stored = await chrome.storage.local.get(["settings", "reportingConsent"]);
-
-  if (!stored.settings) {
-    await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
-  }
-  if (!stored.reportingConsent) {
-    await queueMutation(async () => {
-      const { reportingConsent } = await chrome.storage.local.get("reportingConsent");
-      if (!reportingConsent) await chrome.storage.local.set({ reportingConsent: DEFAULT_REPORTING_CONSENT });
-    });
-  }
+  await queueMutation(async () => {
+    const stored = await chrome.storage.local.get(["installId", "settings", "reportingConsent"]);
+    const change = {};
+    // No install ping: creating this local UUID does not contact the backend.
+    if (!validInstallId(stored.installId)) change.installId = crypto.randomUUID();
+    if (!stored.settings) change.settings = DEFAULT_SETTINGS;
+    if (!stored.reportingConsent) change.reportingConsent = DEFAULT_REPORTING_CONSENT;
+    if (Object.keys(change).length) await chrome.storage.local.set(change);
+  });
 
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_INTERVAL_MINUTES });
   chrome.alarms.create(BADGE_ALARM, { periodInMinutes: 30 });

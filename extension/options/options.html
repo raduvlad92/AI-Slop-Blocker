@@ -18,13 +18,19 @@
         Sharing is off unless you turn it on. If enabled, each new block sends
         <code>{videoId, channelId, channelName, scope, installId}</code> to the AI
         Slop Blocker report server. A channel block also sends the video currently
-        shown. The random installation ID connects your reports for duplicate
-        checks and rate limits. No account or full watch history is sent.
+        shown. The random installation ID is created locally when installed,
+        stays on your device while sharing is off, and connects opted-in reports
+        for duplicate checks, limits, and contributor review. No account or full
+        watch history is sent. Earlier blocks are not uploaded when sharing starts.
       </p>
       <p class="muted">
-        A human reviews reports before adding anything to the public community
-        list. Turning sharing off stops future reports; it does not delete reports
-        already sent. Raw reports expire after 90 days.
+        A moderator can review your selected report history and mark reports
+        useful or false positive, or ignore reports under a hashed contributor ID.
+        Raw reports and review history expire after 90 days; a minimal hashed
+        ignore record can remain until manually resumed or deleted. Ignoring
+        reports does not affect local blocking or list sync. Public entries still
+        require human review. Turning sharing off stops future reports without
+        deleting earlier ones.
         <a href="../privacy.html" target="_blank" rel="noopener">Read the privacy policy</a>.
       </p>
       <label class="toggle-row">

@@ -5,6 +5,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:browser": "node tests/browser/serve.mjs",
     "validate": "node .github/validate-blocklist.js",
+    "review:admin": "node scripts/review-admin.mjs",
     "package": "python3 scripts/package-release.py"
   },
   "engines": { "node": ">=22.13.0" }

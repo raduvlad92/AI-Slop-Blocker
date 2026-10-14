@@ -2,11 +2,22 @@
 
 A single Cloudflare Worker + D1 database that receives optional, pseudonymous
 block reports from the extension. Reporting is off by default and requires
-explicit opt-in. Reports contain a random installation UUID (`installId`),
+explicit opt-in. The extension creates a random installation UUID locally on
+installation and repairs missing/invalid legacy IDs on update. It sends no
+automatic install event or UUID on install/consent changes. Future opted-in
+reports contain that UUID (`installId`),
 video/channel identifiers, an optional channel name, scope, and receipt time.
 The UUID links reports from one installation; it is not a verified person or
 an account. Full browsing/search/watch histories and local statistics are not
-uploaded. Public policy: `GET /privacy`.
+uploaded. The Worker derives a SHA-256 contributor ID for private review/ignore
+controls. Installation IDs are client-generated, not verified people; resets or
+new IDs can evade ignores. Public policy: `GET /privacy`, updated October 14, 2026.
+
+The contributor moderation upgrade is deployed for release **0.1.2**. Migration,
+private legacy hash backfill, production endpoint/moderation checks, updated
+policy equality, synthetic admin/security tests, and the release package are
+verified. The real production read-only admin view and updated private GitHub
+review run/output were also verified without changing real reports.
 
 ## Endpoints
 
@@ -32,6 +43,9 @@ Body: `{ videoId, channelId, channelName, scope: "video" | "channel", installId 
 - Validates shape strictly (11-char video IDs, `UC…` IDs or `@handles`, UUID installId).
 - Dedupes: the same install can't submit the same video/channel again while
   the original report is retained (unique indexes + `INSERT OR IGNORE`).
+- Derives a stable SHA-256 contributor identifier from `installId`. Ignored
+  identifiers' past/future reports do not contribute to community review. This
+  does not affect client-local blocking or public-list sync.
 - Independent edge limits: 60 attempts/minute per connecting IP address and
   300 attempts/minute across the endpoint, before reading the body or querying
   D1. Rotating `installId` cannot reset these limits.
@@ -72,12 +86,54 @@ authentication as `/stats`. Returns exactly `{ digest, markdown }`:
   future placeholders. Video/channel entries include `id`, `name`, `blocks`,
   `firstSeen`, `lastSeen`, `url`, `listed`, and `isNew`.
 - `markdown` contains the full human-readable `REVIEW.md` text.
+- Contributor summary counts cover distinct active/eligible installation IDs
+  within the 90-day report window and the persistent ignored-ID registry count.
+  The registry count can remain nonzero after all associated reports expire.
 
 This is a read-only endpoint. It queries active report aggregates and fetches
 the public blocklists to flag already-listed items. It never deletes reports,
-writes to D1, writes to GitHub, or returns raw installation UUIDs. A Worker
+writes to D1, writes to GitHub, or returns raw installation UUIDs, contributor
+hashes, individual histories, or moderation reasons. A Worker
 `GITHUB_TOKEN` is not required, and any configured token is not used by this
 endpoint. Responses are not cached.
+
+### Private contributor moderation
+
+Every endpoint below requires `Authorization: Bearer <STATS_KEY>`, fails closed
+when the credential is missing/unconfigured, and is for the administrator only.
+The public extension does not receive this credential.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /contributors?limit=50&offset=0` | Paginated hashed contributor IDs with retained report counts/summary. |
+| `GET /contributors/:64hex?limit=50&before=reportID` | One hashed contributor's retained report history, counts, and moderation state. `before` pages toward older report IDs. |
+| `PUT /contributors/:64hex/moderation` | `{ignored: boolean, reason?: string}` — ignore or resume that identifier; optional reason is limited to 300 characters. |
+| `PUT /reports/:positiveInt/review` | `{status: "pending" \| "useful" \| "false_positive"}` — manually classify one retained report. |
+
+List/history defaults are 50 records, with a maximum of 100 per request. Reports
+and their review statuses/history are visible only within the 90-day retention
+window. Contributor IDs identify installations, not verified humans. A moderator
+can ignore all that ID's past and future reports for community review or resume
+eligibility; this never automatically edits the public curated lists.
+
+The minimal ignore registry retains the SHA-256 contributor ID, optional reason,
+and update time until manual resume/deletion. It does not retain the expired
+report history, emails, IP addresses, or countries. The normal short-lived
+IP-derived abuse counters remain separate from this registry.
+
+For the maintainer, run `npm run review:admin` from the repository root and open
+`http://127.0.0.1:8768/`. The Node launcher uses the previously configured private
+administrator credential outside the repository. The credential stays in the
+Node process and is never pasted into the browser, placed in a URL, or stored in
+browser storage. The UI lists contributors/details, report counts/history and
+pending/useful/false-positive controls, plus **Ignore reports**/**Resume reports**
+with an optional reason. This tool is not packaged with the extension. Its
+synthetic browser/security checks and real production read-only view passed.
+The real view displayed contributor history with no browser Authorization header
+or admin secret in the DOM, no console errors, and no changes to real reports.
+
+Installation/country metrics come from the Chrome Web Store, if published there;
+there is no new extension telemetry or email/IP/country report collection.
 
 ### Daily review digest → private GitHub repo (recommended)
 
@@ -90,6 +146,11 @@ Use a scheduled GitHub Actions workflow **inside the private**
   clickable links, first/last seen dates, and flags: 🆕 activity in the last
   24h, ✅ already on the public blocklist.
 - `review.json` — the same data, machine-readable.
+
+GitHub snapshots remain aggregate-only. Contributor summary counts do not export
+raw UUIDs, hashes, individual report histories, or moderator reasons. Historical
+aggregate snapshots can remain in private Git history after individual reports
+expire or a contributor becomes ignored.
 
 Configure the workflow with the Worker URL and an encrypted Actions secret
 containing the Worker `STATS_KEY`. The workflow calls `GET /review`, saves
@@ -120,9 +181,13 @@ A configured token also enables the existing daily cron push after cleanup.
 
 ### Report retention
 
-Raw UUID-linked reports expire after **90 days**. `/stats`, `/review`, and new
-digests exclude expired rows even if cleanup has been delayed. The daily cron
-deletes expired rows and optionally pushes a digest in legacy mode. A manual
+Raw UUID-linked reports and their review statuses/history expire after **90 days**.
+Contributor views, `/stats`, `/review`, and new digests exclude expired records
+even if cleanup has been delayed. Ignored IDs' reports are excluded from eligible
+community review. The minimal ignored-ID hash/reason/update registry remains
+until a moderator manually resumes/deletes it, independently of report expiry.
+The daily cron deletes expired reports and their review records and optionally
+pushes a digest in legacy mode. A manual
 `POST /digest` also prunes before generating its snapshot. A digest failure
 does not undo a completed cleanup; a cleanup failure stops that digest run.
 
@@ -130,7 +195,8 @@ Daily cleanup normally removes expired rows on its next run, so service
 interruptions can delay physical deletion. Cloudflare's recovery backups may
 retain deleted records for up to 30 additional days, depending on the plan.
 Historical private GitHub aggregate snapshots and public curated lists/Git
-history can remain indefinitely. Review files contain no raw install UUIDs.
+history can remain indefinitely. Review files contain no raw install UUIDs,
+contributor hashes, individual histories, or reasons.
 
 Turning off reporting stops future reports; it does not retract previously
 received ones. Local block removal and uninstalling also do not delete server
@@ -147,12 +213,20 @@ automatic expiry behavior.
 
 ## Deploy
 
-The 0.1.1 release is deployed at
+The 0.1.2 contributor backend is deployed at
 `https://aislopblocker-api.radu-vlad-92.workers.dev`. This checkout's Wrangler
 configuration already identifies the production account/database and rate-limit
 namespaces. For an update to this deployment, keep those bindings and run
 `wrangler deploy`; do not create another database. Live checks and the verified
 private review run are recorded in [store/RELEASE-CHECKS.md](../store/RELEASE-CHECKS.md).
+The additive 0002 migration and private legacy hash backfill completed without
+losing existing reports. Live tests confirmed administrator protection, status
+changes, ignored historical votes and future submissions without insertion, and
+resume behavior. Synthetic reports/rules were removed after testing. The updated
+hosted policy is byte-identical to both source copies; ZIP 0.1.2 is verified.
+The updated private GitHub review [run 38489277906](https://github.com/raduvlad92/AI-Slop-Review/actions/runs/38489277906)
+succeeded. Its actual Markdown/JSON outputs were checked for aggregate contributor
+counts and exclusion of UUIDs, hashes, and individual histories.
 
 For a **fresh installation in another account**, replace the account/database
 IDs and select unused rate-limit namespaces before following these steps:
@@ -203,6 +277,18 @@ The migration only adds a `createdAt` index. Cleanup occurs on the next daily
 cron or authenticated manual digest; take any required recovery backup before
 running cleanup against existing production data. New databases get the same
 index from `schema.sql`.
+
+The production 0.1.2 contributor migration is already applied. For another
+existing deployment that has not applied it, the additive migration command is:
+
+```sh
+wrangler d1 execute aislopblocker --remote --file=migrations/0002_contributor_moderation.sql
+```
+
+Existing report UUIDs must also be backfilled privately to their contributor
+hashes as part of an upgrade. This deployment's backfill completed with no legacy
+NULL contributor hashes and preserved its real reports. Do not reapply a completed
+migration merely to use the admin view.
 
 ## Smoke test
 

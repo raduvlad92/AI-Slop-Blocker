@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Slop Blocker — Community review</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">AI SLOP BLOCKER · PRIVATE REVIEW</p><h1>Community report review</h1></div>
+      <button id="refresh" type="button">Refresh</button>
+    </header>
+    <p class="intro">Review selected block reports, then decide which contributors to include. IDs represent installations; one person can have several IDs.</p>
+    <p id="connection" class="muted"></p>
+    <div id="message" role="status" aria-live="polite"></div>
+    <section class="metrics" aria-label="Contributor counts">
+      <article><span>Reporting installations</span><strong id="active">—</strong><small>With reports in the last 90 days</small></article>
+      <article><span>Eligible installations</span><strong id="eligible">—</strong><small>Active IDs you have not ignored</small></article>
+      <article><span>Ignored IDs</span><strong id="ignored">—</strong><small>Kept until you resume their reports</small></article>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><h2>Contributors</h2><span id="page-label" class="muted"></span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Installation</th><th>Reports</th><th>False positives</th><th>Last report</th><th>Status</th><th><span class="sr-only">Open reports</span></th></tr></thead>
+        <tbody id="contributors"></tbody>
+      </table></div>
+      <p id="empty" class="muted" hidden>No reports yet. Reports arrive only after a user enables sharing and blocks something.</p>
+      <nav class="pagination" aria-label="Contributor pages"><button id="previous" type="button">Previous</button><button id="next" type="button">Next</button></nav>
+    </section>
+    <section id="details" class="panel" hidden>
+      <div class="section-heading"><h2 id="contributor-name"></h2><span id="contributor-status" class="pill"></span></div>
+      <p id="contributor-id" class="identifier"></p>
+      <p id="contributor-counts" class="muted"></p>
+      <div class="moderation">
+        <div><label for="ignore-reason">Moderator note <span class="muted">(optional)</span></label><textarea id="ignore-reason" maxlength="300" rows="2" placeholder="Why these reports should be ignored"></textarea></div>
+        <button id="moderate" type="button"></button>
+      </div>
+      <p class="hint">Ignoring an ID excludes its retained reports and prevents future reports from entering the queue. Local blocking and community downloads keep working. Published public-list entries still need a separate review.</p>
+      <h3>Report history · last 90 days</h3>
+      <p class="muted">Mark false positives yourself. Useful and unreviewed reports remain candidates; publication still requires your approval.</p>
+      <div id="reports" class="reports"></div>
+      <button id="older" type="button" hidden>Load older reports</button>
+    </section>
+    <footer>Installation statistics and country breakdowns come from Chrome Web Store metrics. This view contains no reporter names, emails or IP addresses. Historical reports expire after 90 days; an ignore rule persists until you resume it.</footer>
+  </main>
+</body>
+</html>

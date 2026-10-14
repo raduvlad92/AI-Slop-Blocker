@@ -3,6 +3,7 @@ account_id = "047c2c72488af1dfe1a83f4f9553c501"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
 workers_dev = true
+preview_urls = false
 
 # Daily raw-report expiry cleanup (06:00 UTC). Private GitHub Actions pulls /review.
 [triggers]

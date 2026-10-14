@@ -28,25 +28,29 @@
 <body>
   <main>
     <h1>AI Slop Blocker Privacy Policy</h1>
-    <p class="updated">Last updated: October 13, 2026</p>
-    <p class="summary">Your personal block list, settings, and statistics stay on your device. Sharing new blocks with the community is optional and off by default. If you opt in, reports are linked by a random installation identifier and kept in the active reporting database for 90 days.</p>
+    <p class="updated">Last updated: October 14, 2026</p>
+    <p class="summary">Your personal block list, settings, statistics, and a random installation ID are stored on your device. Sharing future blocks is optional and off by default; installing the extension does not send the installation ID to the reporting server. Opt-in reports and their review history expire after 90 days. A minimal hashed ignore record can remain until a moderator resumes or deletes it.</p>
 
     <h2>Who operates the extension</h2>
-    <p>The operator is the AI Slop Blocker maintainer (<a href="https://github.com/raduvlad92" rel="noreferrer">raduvlad92</a>). The extension and community lists are available in the <a href="https://github.com/raduvlad92/AI-Slop-Blocker" rel="noreferrer">public project repository</a>. There are no user accounts, payments, advertising, or analytics features in the extension.</p>
+    <p>The operator is the AI Slop Blocker maintainer (<a href="https://github.com/raduvlad92" rel="noreferrer">raduvlad92</a>). The extension and community lists are available in the <a href="https://github.com/raduvlad92/AI-Slop-Blocker" rel="noreferrer">public project repository</a>. There are no user accounts, payments, advertising, or installation analytics beacons in the extension.</p>
 
     <h2>Data on your device</h2>
-    <p>The extension uses Chrome's local extension storage for your personal video and channel blocks, settings, cached community lists, channel identity mappings, and blocking statistics. Statistics include event times, event types, and estimated minutes saved. This information is not uploaded as a browsing or statistics log.</p>
+    <p>The extension uses Chrome's local extension storage for your personal video and channel blocks, settings, reporting consent, a randomly generated installation UUID, cached community lists, channel identity mappings, and blocking statistics. The UUID is generated locally on installation; updates preserve a valid ID and repair missing/invalid legacy IDs. It stays stable across worker restarts and reporting on/off choices. This is not automatic installation telemetry: the ID is sent to the reporting server only with future block reports after you opt in, not on install or opt-in itself. Statistics include event times, event types, and estimated minutes saved. They are not uploaded as a browsing or statistics log.</p>
     <p>The extension reads details on Google Search and YouTube pages to hide AI Overviews, identify video and channel cards, and apply your filters. It does not send your search queries, full browsing history, full watch history, page contents, passwords, or payment information to the reporting server. Local records remain on your device until removed, pruned by the extension, or cleared by uninstalling it.</p>
 
     <h2>Optional community reporting</h2>
-    <p>Reporting is disabled by default. You can choose to share future blocks in the extension's Options page. A random installation UUID is generated when you first opt in. Each report contains:</p>
+    <p>Reporting is disabled by default. You can choose to share future blocks in the extension's Options page. Enabling it does not replay earlier local blocks or send a separate installation event. Each future report contains:</p>
     <ul>
       <li>The YouTube video ID and, when available, channel ID or handle and channel name.</li>
       <li>Whether you chose to block a video or a channel.</li>
       <li>Your random installation UUID; the server adds the time the report was received.</li>
     </ul>
-    <p>These are <strong>pseudonymous reports</strong>: the UUID is not an account or your name, but it lets the server link reports from the same installation. It is used to deduplicate reports, enforce submission limits, and count distinct submitted identifiers. It is not proof that reports came from distinct people.</p>
+    <p>These are <strong>pseudonymous reports</strong>: the UUID is not an account or your name, but it lets the server link reports from the same installation. It supports deduplication, submission limits, contributor review, and counts of distinct active or eligible installation identifiers. The server derives a stable SHA-256 contributor ID from the UUID. A hash is still a linked identifier, not anonymous data or proof of a distinct person. Reinstalling, resetting local data, or supplying a different client-generated ID can change the identifier and evade an ignore rule.</p>
     <p>Reports help a human maintainer review possible additions to the shared blocklist. Reports are never automatically promoted into the public list. Local blocking works whether reporting is enabled or disabled, and old local blocks are not uploaded when you enable reporting.</p>
+
+    <h2>Private contributor review and ignored reports</h2>
+    <p>An authorized moderator can use a private local administration interface to view contributor IDs, report counts, and the selected video/channel reports received within the 90-day retention period. Reports can be marked pending, useful, or false positive, with review status/history retained alongside the report. This view is available to the administrator, not other extension users or the public.</p>
+    <p>A moderator can ignore a contributor ID so its past and future reports do not contribute to community review, or resume it. Ignoring reports does not disable that installation's local blocking or public-list sync and does not automatically remove an already published community entry. The ignore registry contains only the hashed contributor ID, an optional moderator reason, and the last update time. That minimal registry remains until a moderator manually resumes or deletes it, so it can outlast the underlying reports.</p>
 
     <h2>Hosting and abuse prevention</h2>
     <p>The reporting API is hosted on Cloudflare Workers, with reports stored in Cloudflare D1. Cloudflare receives normal connection information such as your IP address and request headers when you contact the API. The Worker derives a daily-changing hash from Cloudflare's client-IP header for short-window abuse counters. The API does not write the IP address or this hash into the reports database or review repository.</p>
@@ -56,10 +60,13 @@
     <p>The extension downloads the public community lists from GitHub on installation, browser startup when needed, periodic refreshes, and when you select Sync now. It can also request public YouTube channel pages to resolve channel handles to stable channel IDs. Channel lookup requests omit browser credentials. These requests reveal normal connection information to GitHub or YouTube; they do not include your installation UUID or personal block list.</p>
     <p>Those services operate under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noreferrer">GitHub Privacy Statement</a> and <a href="https://policies.google.com/privacy" rel="noreferrer">Google Privacy Policy</a>. Your ordinary use of Google and YouTube is separate from the extension's reporting service.</p>
 
+    <h2>Chrome Web Store metrics</h2>
+    <p>If distributed through the Chrome Web Store, the maintainer can use aggregate installation and country metrics supplied by the store. The extension does not send a separate installation telemetry event or add email, IP address, or country fields to its report payload. This does not change the normal connection information processed by hosting providers as described above.</p>
+
     <h2>Retention and published lists</h2>
-    <p>Raw UUID-linked reports expire after <strong>90 days</strong>. They are excluded from review statistics and new digests after that point, and deleted from the active database by the daily cleanup or an administrator's manual digest run. Scheduled cleanup normally removes expired rows on its next run; service interruptions can delay physical deletion.</p>
+    <p>Raw UUID-linked reports and their review statuses/history expire after <strong>90 days</strong>. They are excluded from contributor history, review statistics, and new digests after that point, and deleted from the active database by daily cleanup or an administrator's manual digest run. Scheduled cleanup normally removes expired rows on its next run; service interruptions can delay physical deletion. The minimal hashed ignored-ID registry described above is retained until manual resume or deletion and is not removed merely because its reports expire.</p>
     <p>Cloudflare's recovery backups can temporarily retain deleted database records under its backup settings, for up to 30 additional days depending on the hosting plan. They are not used as the active review database.</p>
-    <p>The maintainer's private GitHub review repository contains aggregated item identifiers, names, report counts, and first/last reporting dates. It does <strong>not</strong> contain raw installation UUIDs. Historical aggregated review snapshots and Git commit history may be kept indefinitely.</p>
+    <p>The maintainer's private GitHub review repository contains aggregated item identifiers, names, report counts, first/last reporting dates, counts of distinct active or eligible installation identifiers, and counts of ignored registry entries. It does <strong>not</strong> contain raw installation UUIDs, hashed contributor IDs, per-contributor report histories, or moderator reasons. Historical aggregate snapshots and Git commit history may be kept indefinitely.</p>
     <p>The public curated blocklist contains video or channel identifiers, optional names and reasons, and dates of addition. These lists and their Git history may also remain public indefinitely. Removing or expiring an individual report does not remove an already reviewed public entry or rewrite historical aggregate snapshots.</p>
 
     <h2>Your choices and contact</h2>

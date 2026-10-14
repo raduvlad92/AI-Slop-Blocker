@@ -18,8 +18,9 @@ const BLOCK = {
 function harness(initial = {}, postResponse = async () => ({ ok: true, status: 200 })) {
   const state = structuredClone(initial);
   const reports = [];
+  const requests = [];
   const retries = [];
-  let listener, installed;
+  let listener, installed, startup;
   let uuidCalls = 0, optionsOpened = 0;
   const extensionUrl = "chrome-extension://asb-test/";
   const chrome = {
@@ -27,7 +28,7 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
       id: "asb-test",
       getURL: (path) => `${extensionUrl}${path}`,
       onInstalled: { addListener(callback) { installed = callback; } },
-      onStartup: { addListener() {} },
+      onStartup: { addListener(callback) { startup = callback; } },
       onMessage: { addListener(callback) { listener = callback; } },
       async openOptionsPage() { optionsOpened++; },
     },
@@ -43,17 +44,21 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
     alarms: { create() {}, onAlarm: { addListener() {} } },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} },
   };
-  vm.runInNewContext(source, {
+  const startWorker = () => vm.runInNewContext(source, {
     chrome, console, Date,
     ASBChannels: identity.ASBChannels,
-    crypto: { randomUUID() { uuidCalls++; return INSTALL_ID; } },
+    crypto: { randomUUID() {
+      uuidCalls++;
+      return uuidCalls === 1 ? INSTALL_ID : `12345678-1234-4234-8234-${String(uuidCalls).padStart(12, "0")}`;
+    } },
     setTimeout(callback) { retries.push(callback); return retries.length; },
     clearTimeout() {},
-    BACKEND_URL: "https://example.invalid",
-    BLOCKLIST_VIDEOS_URL: "https://example.invalid/videos",
-    BLOCKLIST_CHANNELS_URL: "https://example.invalid/channels",
+    BACKEND_URL: "https://reports.example.invalid",
+    BLOCKLIST_VIDEOS_URL: "https://lists.example.invalid/videos",
+    BLOCKLIST_CHANNELS_URL: "https://lists.example.invalid/channels",
     SYNC_INTERVAL_MINUTES: 360,
     async fetch(url, options) {
+      requests.push({ url, method: options?.method || "GET" });
       if (options?.method === "POST") {
         reports.push({ url, credentials: options.credentials, payload: JSON.parse(options.body) });
         return postResponse(reports.length);
@@ -61,6 +66,7 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
       return { ok: true, json: async () => [] };
     },
   });
+  startWorker();
   function send(message, sender = { id: "asb-test", url: "https://www.youtube.com/watch?v=AAAAAAAAAAA" }) {
     return new Promise((resolve) => {
       let replied = false;
@@ -69,23 +75,122 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
     });
   }
   return {
-    state, reports, retries, send,
+    state, reports, requests, retries, send,
     setReporting: (enabled) => send({ type: "asb-set-reporting", enabled }, { id: "asb-test", url: `${extensionUrl}options/options.html` }),
     install: (reason) => installed({ reason }),
+    startup: () => startup(),
+    restartWorker: startWorker,
     uuidCalls: () => uuidCalls,
     optionsOpened: () => optionsOpened,
   };
 }
 
-test("fresh install starts local-only, creates no identifier, and presents the optional choice", async () => {
+test("fresh install creates only a local UUID, starts reporting off, and presents the optional choice", async () => {
   const app = harness();
   await app.install("install");
   await flush();
   assert.equal(app.state.reportingConsent.enabled, false);
-  assert.equal(app.state.installId, undefined);
-  assert.equal(app.uuidCalls(), 0);
+  assert.equal(app.state.installId, INSTALL_ID);
+  assert.equal(app.uuidCalls(), 1);
   assert.equal(app.reports.length, 0);
+  assert.ok(app.requests.every((request) => request.url.startsWith("https://lists.example.invalid/")));
   assert.equal(app.optionsOpened(), 1);
+});
+
+test("updates preserve valid existing UUIDs and reporting choices", async () => {
+  for (const id of [INSTALL_ID, "ABCDEFAB-ABCD-ABCD-ABCD-ABCDEFABCDEF"]) {
+    const consent = { enabled: true, updatedAt: 1 };
+    const app = harness({ installId: id, reportingConsent: consent, settings: { hideYouTube: false } });
+    await app.install("update");
+    await flush();
+    assert.equal(app.state.installId, id);
+    assert.equal(app.uuidCalls(), 0);
+    assert.deepEqual(app.state.reportingConsent, consent);
+    assert.equal(app.state.settings.hideYouTube, false);
+    assert.equal(app.reports.length, 0);
+    assert.equal(app.optionsOpened(), 0);
+  }
+});
+
+test("updates repair missing or invalid legacy UUIDs locally without enabling reports", async () => {
+  for (const id of [undefined, null, "", "not-a-uuid", 42, {}]) {
+    const app = harness({ ...(id !== undefined ? { installId: id } : {}) });
+    await app.install("update");
+    await flush();
+    assert.equal(app.state.installId, INSTALL_ID);
+    assert.equal(app.uuidCalls(), 1);
+    assert.equal(app.state.reportingConsent.enabled, false);
+    assert.equal(app.reports.length, 0);
+    assert.ok(app.requests.every((request) => request.url.startsWith("https://lists.example.invalid/")));
+  }
+});
+
+test("the local UUID survives worker restarts, browser startup, consent toggles and opt-out", async () => {
+  const app = harness();
+  await app.install("install");
+  await flush();
+  const id = app.state.installId;
+  app.restartWorker();
+  await app.startup();
+  await app.setReporting(true);
+  await app.setReporting(false);
+  await app.setReporting(true);
+  await app.setReporting(false);
+  await app.send(BLOCK);
+  await flush();
+  assert.equal(app.state.installId, id);
+  assert.equal(app.uuidCalls(), 1);
+  assert.equal(app.state.reportingConsent.enabled, false);
+  assert.ok(app.state.personal.videos.AAAAAAAAAAA);
+  assert.equal(app.reports.length, 0);
+});
+
+test("initialization and opt-in share one queue and create only one UUID", async () => {
+  for (const consentFirst of [false, true]) {
+    const app = harness();
+    const operations = consentFirst
+      ? [app.setReporting(true), app.install("install"), app.install("update")]
+      : [app.install("install"), app.install("update"), app.setReporting(true)];
+    await Promise.all(operations);
+    await flush();
+    assert.equal(app.state.installId, INSTALL_ID);
+    assert.equal(app.uuidCalls(), 1);
+    assert.equal(app.state.reportingConsent.enabled, true);
+    assert.equal(app.reports.length, 0);
+  }
+});
+
+test("initialization and a simultaneous local block preserve both the UUID and block", async () => {
+  for (const initializationFirst of [false, true]) {
+    const app = harness();
+    await Promise.all(initializationFirst
+      ? [app.install("install"), app.send(BLOCK)]
+      : [app.send(BLOCK), app.install("update")]);
+    await flush();
+    assert.equal(app.state.installId, INSTALL_ID);
+    assert.equal(app.uuidCalls(), 1);
+    assert.ok(app.state.personal.videos.AAAAAAAAAAA);
+    assert.equal(app.state.blockedCount, 1);
+    assert.equal(app.state.events.length, 1);
+    assert.equal(app.state.reportingConsent.enabled, false);
+    assert.equal(app.reports.length, 0);
+  }
+});
+
+test("a reporting choice repairs older missing or invalid UUIDs without rotating valid IDs", async () => {
+  for (const enabled of [false, true]) {
+    for (const oldId of [undefined, "invalid"]) {
+      const app = harness({ ...(oldId ? { installId: oldId } : {}) });
+      assert.equal((await app.setReporting(enabled)).ok, true);
+      assert.equal(app.state.installId, INSTALL_ID);
+      assert.equal(app.uuidCalls(), 1);
+      assert.equal(app.state.reportingConsent.enabled, enabled);
+      await app.setReporting(!enabled);
+      assert.equal(app.state.installId, INSTALL_ID);
+      assert.equal(app.uuidCalls(), 1);
+      assert.equal(app.reports.length, 0);
+    }
+  }
 });
 
 test("existing installs with missing consent remain local-only despite an old identifier", async () => {
@@ -112,8 +217,10 @@ test("missing, disabled, and non-boolean consent never report blocks", async () 
   }
 });
 
-test("affirmative opt-in creates the identifier and shares only the disclosed payload", async () => {
+test("affirmative opt-in shares only the disclosed payload with the existing local identifier", async () => {
   const app = harness();
+  await app.install("install");
+  await flush();
   assert.equal((await app.setReporting(true)).ok, true);
   assert.equal(app.uuidCalls(), 1);
   await app.send({ ...BLOCK, scope: "channel" });
@@ -123,6 +230,21 @@ test("affirmative opt-in creates the identifier and shares only the disclosed pa
   assert.equal(app.reports[0].credentials, "omit");
   assert.ok(app.state.personal.videos.AAAAAAAAAAA);
   assert.ok(app.state.personal.channels["@creator"]);
+});
+
+test("an ignored HTTP 200 report does not change successful local blocking", async () => {
+  const app = harness({}, async () => ({ ok: true, status: 200, json: async () => ({ ok: true, accepted: false }) }));
+  await app.install("install");
+  await app.setReporting(true);
+  const result = await app.send(BLOCK);
+  await flush();
+  assert.equal(result.ok, true);
+  assert.ok(app.state.personal.videos.AAAAAAAAAAA);
+  assert.equal(app.state.blockedCount, 1);
+  assert.equal(app.state.events.length, 1);
+  assert.equal(app.reports.length, 1);
+  assert.deepEqual(app.reports[0].payload, { ...BLOCK.info, scope: "video", installId: INSTALL_ID });
+  assert.equal(app.retries.length, 0);
 });
 
 test("opting in does not send blocks saved before that choice", async () => {

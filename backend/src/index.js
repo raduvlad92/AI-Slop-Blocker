@@ -8,12 +8,18 @@ const DAILY_LIMIT = 50; // submissions per installId per rolling 24h
 const MAX_BODY_BYTES = 2048;
 const REPORT_RETENTION_DAYS = 90;
 const ACTIVE_REPORTS_SQL = `createdAt > datetime('now', '-${REPORT_RETENTION_DAYS} day')`;
+// A NULL legacy contributorId is still eligible until the private backfill.
+const NOT_IGNORED_SQL = `NOT EXISTS (SELECT 1 FROM ignored_contributors
+  WHERE ignored_contributors.contributorId = submissions.contributorId)`;
+const ELIGIBLE_REPORTS_SQL = `reviewStatus != 'false_positive' AND ${NOT_IGNORED_SQL}`;
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 // UC… canonical channel id, or an @handle (the extension sends whichever the
 // card exposed).
 const CHANNEL_ID_RE = /^(UC[A-Za-z0-9_-]{22}|@[A-Za-z0-9._-]{1,50})$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CONTRIBUTOR_ID_RE = /^[0-9a-f]{64}$/i;
+const REVIEW_STATUSES = new Set(["pending", "useful", "false_positive"]);
 
 function json(body, status = 200, headers = {}) {
   return new Response(status === 204 ? null : JSON.stringify(body), {
@@ -23,7 +29,7 @@ function json(body, status = 200, headers = {}) {
       "cache-control": "no-store",
       // Admin endpoints still require an explicit bearer credential.
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST, GET, OPTIONS",
+      "access-control-allow-methods": "POST, GET, PUT, OPTIONS",
       "access-control-allow-headers": "content-type, authorization",
       ...headers,
     },
@@ -54,6 +60,21 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/stats") {
       return handleStats(request, env);
+    }
+    if (url.pathname === "/contributors") {
+      return runAdminRoute(request, env, "GET", () => listContributors(url, env));
+    }
+    const moderation = /^\/contributors\/([^/]+)\/moderation$/.exec(url.pathname);
+    if (moderation) {
+      return runAdminRoute(request, env, "PUT", () => moderateContributor(request, moderation[1], env));
+    }
+    const contributor = /^\/contributors\/([^/]+)$/.exec(url.pathname);
+    if (contributor) {
+      return runAdminRoute(request, env, "GET", () => contributorDetail(url, contributor[1], env));
+    }
+    const reportReview = /^\/reports\/([^/]+)\/review$/.exec(url.pathname);
+    if (reportReview) {
+      return runAdminRoute(request, env, "PUT", () => reviewReport(request, reportReview[1], env));
     }
     if (url.pathname === "/review") {
       if (request.method !== "GET") {
@@ -100,6 +121,209 @@ async function requireAdmin(request, env) {
     if (!different) return null;
   }
   return json({ error: "unauthorized" }, 401, { "www-authenticate": "Bearer" });
+}
+
+class AdminProblem extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function runAdminRoute(request, env, method, operation) {
+  if (request.method !== method) {
+    return json({ error: `use ${method} for this endpoint` }, 405, { allow: method });
+  }
+  const unauthorized = await requireAdmin(request, env);
+  if (unauthorized) return unauthorized;
+  try {
+    return await operation();
+  } catch (err) {
+    if (err instanceof AdminProblem) return json({ error: err.message }, err.status);
+    // Database errors may contain private values; neither log nor return them.
+    console.error("contributor administration temporarily unavailable");
+    return json({ error: "operation temporarily unavailable" }, 500);
+  }
+}
+
+function positiveInteger(value, name) {
+  if (!/^[1-9][0-9]*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) {
+    throw new AdminProblem(400, `invalid ${name}`);
+  }
+  return Number(value);
+}
+
+function pageLimit(url) {
+  const value = url.searchParams.get("limit");
+  return value === null ? 50 : Math.min(positiveInteger(value, "limit"), 100);
+}
+
+function contributorId(value) {
+  if (!CONTRIBUTOR_ID_RE.test(value)) throw new AdminProblem(400, "invalid contributor id");
+  return value.toLowerCase();
+}
+
+async function readAdminObject(request, keys) {
+  let raw;
+  try {
+    raw = await readLimitedBody(request);
+  } catch {
+    throw new AdminProblem(400, "invalid request body");
+  }
+  if (raw === null) throw new AdminProblem(413, "payload too large");
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    throw new AdminProblem(400, "invalid JSON");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).some((key) => !keys.includes(key))) {
+    throw new AdminProblem(400, "invalid request fields");
+  }
+  return body;
+}
+
+async function requireContributorBackfill(env) {
+  const legacy = await env.DB.prepare(
+    `SELECT 1 AS pending FROM submissions
+     WHERE contributorId IS NULL AND ${ACTIVE_REPORTS_SQL} LIMIT 1`
+  ).first();
+  if (legacy) throw new AdminProblem(503, "contributor data is initializing");
+}
+
+async function contributorSummary(env) {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT installId) AS active,
+            COUNT(DISTINCT CASE WHEN ${NOT_IGNORED_SQL} THEN installId END) AS eligible,
+            (SELECT COUNT(*) FROM ignored_contributors) AS ignored
+     FROM submissions WHERE ${ACTIVE_REPORTS_SQL}`
+  ).first();
+  return { active: row.active, eligible: row.eligible, ignored: row.ignored };
+}
+
+function contributorRowsSql(single = false) {
+  const filter = single ? " AND contributorId = ?1" : "";
+  return `WITH recent AS (
+    SELECT contributorId AS id, COUNT(*) AS reports,
+           SUM(reviewStatus = 'useful') AS useful,
+           SUM(reviewStatus = 'false_positive') AS falsePositive,
+           SUM(reviewStatus = 'pending') AS pending,
+           MIN(createdAt) AS firstSeen, MAX(createdAt) AS lastSeen
+    FROM submissions WHERE ${ACTIVE_REPORTS_SQL} AND contributorId IS NOT NULL${filter}
+    GROUP BY contributorId
+  ), ids AS (
+    SELECT id FROM recent UNION
+    SELECT contributorId AS id FROM ignored_contributors${single ? " WHERE contributorId = ?1" : ""}
+  )
+  SELECT ids.id, COALESCE(recent.reports, 0) AS reports,
+         COALESCE(recent.useful, 0) AS useful,
+         COALESCE(recent.falsePositive, 0) AS falsePositive,
+         COALESCE(recent.pending, 0) AS pending,
+         recent.firstSeen, recent.lastSeen,
+         (ignored_contributors.contributorId IS NOT NULL) AS ignored,
+         COALESCE(ignored_contributors.reason, '') AS reason
+  FROM ids LEFT JOIN recent ON recent.id = ids.id
+  LEFT JOIN ignored_contributors ON ignored_contributors.contributorId = ids.id`;
+}
+
+function decorateContributor(row) {
+  return {
+    id: row.id, label: `Contributor ${row.id.slice(0, 12)}`,
+    reports: row.reports, useful: row.useful, falsePositive: row.falsePositive,
+    pending: row.pending, firstSeen: row.firstSeen ?? null, lastSeen: row.lastSeen ?? null,
+    ignored: Boolean(row.ignored), reason: row.reason,
+  };
+}
+
+async function listContributors(url, env) {
+  const limit = pageLimit(url);
+  const value = url.searchParams.get("offset") ?? "0";
+  if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new AdminProblem(400, "invalid offset");
+  }
+  const offset = Number(value);
+  await requireContributorBackfill(env);
+  const [summary, count, rows] = await Promise.all([
+    contributorSummary(env),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM (
+      SELECT DISTINCT contributorId FROM submissions
+      WHERE ${ACTIVE_REPORTS_SQL} AND contributorId IS NOT NULL
+      UNION SELECT contributorId FROM ignored_contributors
+    )`).first(),
+    env.DB.prepare(`${contributorRowsSql()} ORDER BY lastSeen DESC, ids.id ASC LIMIT ?1 OFFSET ?2`)
+      .bind(limit, offset).all(),
+  ]);
+  return json({ summary, contributors: rows.results.map(decorateContributor), total: count.total, limit, offset });
+}
+
+async function contributorDetail(url, value, env) {
+  const id = contributorId(value);
+  const limit = pageLimit(url);
+  const beforeValue = url.searchParams.get("before");
+  const before = beforeValue === null ? null : positiveInteger(beforeValue, "before");
+  await requireContributorBackfill(env);
+  const row = await env.DB.prepare(`${contributorRowsSql(true)} WHERE ids.id = ?1`).bind(id).first();
+  if (!row) throw new AdminProblem(404, "contributor not found");
+  const result = await env.DB.prepare(
+    `SELECT id, scope, videoId, channelId, channelName, createdAt, reviewStatus
+     FROM submissions WHERE contributorId = ?1 AND ${ACTIVE_REPORTS_SQL}
+       AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3`
+  ).bind(id, before, limit + 1).all();
+  const more = result.results.length > limit;
+  const reports = result.results.slice(0, limit);
+  return json({
+    contributor: decorateContributor(row), reports,
+    nextBefore: more ? reports[reports.length - 1].id : null,
+  });
+}
+
+async function moderateContributor(request, value, env) {
+  const id = contributorId(value);
+  const body = await readAdminObject(request, ["ignored", "reason"]);
+  if (typeof body.ignored !== "boolean" ||
+      (body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 300))) {
+    throw new AdminProblem(400, "invalid moderation choice");
+  }
+  await requireContributorBackfill(env);
+  if (!body.ignored) {
+    // Resuming an expired contributor removes the only registry row. A retry
+    // must still succeed without retaining a tombstone or raw report history.
+    await env.DB.prepare("DELETE FROM ignored_contributors WHERE contributorId = ?1").bind(id).run();
+    return json({ ok: true, ignored: false });
+  }
+  const reason = body.reason === undefined ? null : body.reason.trim();
+  // The known-contributor check is part of the same write statement. Pruning
+  // or another moderation request cannot create a new unknown registry entry.
+  const result = await env.DB.prepare(
+    `INSERT INTO ignored_contributors (contributorId, reason)
+     SELECT ?1, COALESCE(?2, '')
+     WHERE EXISTS (SELECT 1 FROM submissions WHERE contributorId = ?1 AND ${ACTIVE_REPORTS_SQL})
+        OR EXISTS (SELECT 1 FROM ignored_contributors WHERE contributorId = ?1)
+     ON CONFLICT(contributorId) DO UPDATE SET
+       reason = CASE WHEN ?2 IS NULL THEN ignored_contributors.reason ELSE excluded.reason END,
+       updatedAt = datetime('now')`
+  ).bind(id, reason).run();
+  if (!result.meta.changes) throw new AdminProblem(404, "contributor not found");
+  return json({ ok: true, ignored: true });
+}
+
+async function reviewReport(request, value, env) {
+  const id = positiveInteger(value, "report id");
+  const body = await readAdminObject(request, ["status"]);
+  if (!REVIEW_STATUSES.has(body.status)) throw new AdminProblem(400, "invalid review status");
+  const result = await env.DB.prepare(
+    `UPDATE submissions SET reviewStatus = ?2 WHERE id = ?1 AND ${ACTIVE_REPORTS_SQL}`
+  ).bind(id, body.status).run();
+  if (!result.meta.changes) throw new AdminProblem(404, "report not found");
+  return json({ ok: true, status: body.status });
+}
+
+async function deriveContributorId(installId) {
+  const hash = await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(`asb-contributor-v1:${installId.toLowerCase()}`)
+  );
+  return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function limitSubmissions(request, env) {
@@ -203,21 +427,27 @@ async function handleSubmit(request, env) {
     typeof channelName === "string"
       ? channelName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 100) || null
       : null;
+  const contributor = await deriveContributorId(installId);
 
   // Count and conditional insert run as one SQLite statement, so concurrent
   // requests cannot both spend the last daily slot. Partial unique indexes
   // still make repeated video/channel reports a no-op.
   const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO submissions (videoId, channelId, channelName, scope, installId)
-     SELECT ?1, ?2, ?3, ?4, ?5
+    `INSERT OR IGNORE INTO submissions (videoId, channelId, channelName, scope, installId, contributorId)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6
      WHERE (SELECT COUNT(*) FROM submissions
-            WHERE installId = ?5 AND createdAt > datetime('now', '-1 day')) < ?6`
+            WHERE installId = ?5 AND createdAt > datetime('now', '-1 day')) < ?7
+       AND NOT EXISTS (SELECT 1 FROM ignored_contributors WHERE contributorId = ?6)`
   )
-    .bind(videoId, cleanChannelId, cleanChannelName, scope, installId.toLowerCase(), DAILY_LIMIT)
+    .bind(videoId, cleanChannelId, cleanChannelName, scope, installId.toLowerCase(), contributor, DAILY_LIMIT)
     .run();
 
   const accepted = result.meta.changes > 0;
   if (!accepted) {
+    const ignored = await env.DB.prepare(
+      "SELECT 1 AS ignored FROM ignored_contributors WHERE contributorId = ?1"
+    ).bind(contributor).first();
+    if (ignored) return json({ ok: true, accepted: false });
     // This follow-up only explains a rejected write; it does not enforce the
     // quota, which was checked atomically inside the INSERT above.
     const { count } = await env.DB.prepare(
@@ -241,12 +471,12 @@ async function handleStats(request, env) {
   const [videos, channels] = await Promise.all([
     env.DB.prepare(
       `SELECT videoId, MAX(channelName) AS channelName, COUNT(*) AS submissions
-       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL}
+       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL} AND ${ELIGIBLE_REPORTS_SQL}
        GROUP BY videoId ORDER BY submissions DESC LIMIT 100`
     ).all(),
     env.DB.prepare(
       `SELECT channelId, MAX(channelName) AS channelName, COUNT(*) AS submissions
-       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL}
+       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL} AND ${ELIGIBLE_REPORTS_SQL}
        GROUP BY channelId ORDER BY submissions DESC LIMIT 100`
     ).all(),
   ]);
@@ -291,21 +521,22 @@ async function pruneExpiredReports(env) {
 }
 
 async function buildReviewDigest(env) {
-  const [videos, channels] = await Promise.all([
+  const [videos, channels, summary] = await Promise.all([
     env.DB.prepare(
       `SELECT videoId AS id, MAX(channelName) AS name,
               COUNT(DISTINCT installId) AS blocks,
               MIN(createdAt) AS firstSeen, MAX(createdAt) AS lastSeen
-       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL}
+       FROM submissions WHERE scope = 'video' AND ${ACTIVE_REPORTS_SQL} AND ${ELIGIBLE_REPORTS_SQL}
        GROUP BY videoId ORDER BY blocks DESC, lastSeen DESC LIMIT 500`
     ).all(),
     env.DB.prepare(
       `SELECT channelId AS id, MAX(channelName) AS name,
               COUNT(DISTINCT installId) AS blocks,
               MIN(createdAt) AS firstSeen, MAX(createdAt) AS lastSeen
-       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL}
+       FROM submissions WHERE scope = 'channel' AND ${ACTIVE_REPORTS_SQL} AND ${ELIGIBLE_REPORTS_SQL}
        GROUP BY channelId ORDER BY blocks DESC, lastSeen DESC LIMIT 500`
     ).all(),
+    contributorSummary(env),
   ]);
 
   const listed = await fetchListedIds(env);
@@ -328,6 +559,7 @@ async function buildReviewDigest(env) {
 
   return {
     generatedAt: new Date().toISOString(),
+    contributorSummary: summary,
     totals: { video: videos.results.length, channel: channels.results.length, domain: 0, page: 0 },
     categories: {
       video: decorate(videos.results, "video"),
@@ -376,6 +608,7 @@ async function fetchListedIds(env) {
 function buildMarkdown(digest) {
   const esc = (s) => String(s ?? "—").replace(/\|/g, "\\|").replace(/\n/g, " ");
   const day = (s) => String(s ?? "").slice(0, 10);
+  const contributors = digest.contributorSummary;
 
   const section = (title, rows) => {
     if (!rows.length) return `## ${title}\n\n_None yet._\n`;
@@ -399,6 +632,8 @@ function buildMarkdown(digest) {
     "# AI Slop review queue",
     "",
     `Generated ${digest.generatedAt} — full snapshot, ranked by distinct submitted install identifiers for each item.`,
+    "",
+    `Contributor counts: ${contributors.active} with retained reports · ${contributors.eligible} eligible (not ignored) · ${contributors.ignored} in the ignored registry.`,
     "",
     "Legend: 🆕 activity in the last 24h · ✅ already on the public blocklist.",
     "",
