@@ -1,8 +1,7 @@
 # AI Slop Blocker — Backend
 
 > Version 0.2.0 updates the local policy sources for Firefox/Zen, portable
-> backups and recovery controls. The November 11 policy still needs deployment
-> before store submission; the production evidence below describes 0.1.2.
+> backups and recovery controls. The November 11 policy is deployed and byte-verified; the production evidence below describes 0.1.2.
 
 A single Cloudflare Worker + D1 database that receives optional, pseudonymous
 block reports from the extension. Reporting is off by default and requires

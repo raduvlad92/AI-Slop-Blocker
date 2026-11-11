@@ -31,10 +31,30 @@ live website compatibility.
   engines, packaging, Firefox lint and installed Chromium/Firefox checks. Native
   Zen runs locally when its binary is available; CI does not claim Zen coverage.
 
+## Marketplace preparation — November 11
+
+User authorized public Firefox marketplace publication. GitHub CI for
+`e74edf4` passed: [run 42944269833](https://github.com/raduvlad92/AI-Slop-Blocker/actions/runs/42944269833).
+The exact unsigned Firefox ZIP remains 53,792 bytes / 19 files, SHA-256
+`54348a05c1e97093b56c64509205fbd56eb6861c79952a71c58a286e9dd0cce2`;
+CRC and policy-source equality pass, with zero-warning Mozilla lint.
+
+Policy deployment succeeded as Worker version
+`5589efea-57fa-4080-898d-02cc15b680bb`. Public `/privacy` returned 200 and
+matched local/packaged SHA-256
+`495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`.
+`/health` returned 200; unauthenticated `/stats` and `/review` returned 401.
+
+The public Mozilla API returned 404 for GUID
+`ai-slop-blocker@deletecookies.dev`. The developer portal redirected to Mozilla
+sign-in behind a CAPTCHA. No local Mozilla credentials were configured; secure
+issuer/secret inputs timed out without values. No AMO upload, signature,
+submission or public listing was created. Prepared listing/reviewer metadata and
+the published privacy text are in `amo-metadata.json` and `amo-policy.json`.
+
 ## Remaining release checks
 
-- Deploy the November 11 policy sources and verify the public policy matches
-  the packaged copy; this change does not deploy the backend.
+- The November 11 policy is deployed as Worker version `5589efea-57fa-4080-898d-02cc15b680bb`; public/source/package SHA-256 matches `495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`. Health returns 200; anonymous admin routes return 401.
 - Retest current live Google/YouTube/Shorts and Firefox/Zen's native optional
   permission grant/rejection/revocation UI. Controlled fixtures are separate.
 - Complete Mozilla signing, signed-package installation/update/restart tests,

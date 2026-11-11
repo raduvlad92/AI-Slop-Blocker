@@ -101,8 +101,7 @@ Raw reports and moderation history expire after 90 days. A minimal hashed ignore
 registry can remain until resumed/deleted. GitHub review snapshots contain only
 aggregates; curated public history can remain. See the [packaged policy](extension/privacy.html)
 and [backend documentation](backend/README.md). The November 11 policy sources
-also document Firefox and backups; deploying that updated public policy is a
-remaining release step. Privacy/support: **contact@deletecookies.dev**.
+also document Firefox and backups; the updated public policy was deployed and byte-verified on November 11. Privacy/support: **contact@deletecookies.dev**.
 
 ## Community curation
 

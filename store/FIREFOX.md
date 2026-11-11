@@ -21,7 +21,7 @@ Public metadata/list requests remain described in the privacy policy.
 
 Before signing/submission:
 
-- Deploy the November 11 policy and verify public/packaged equality.
+- [x] November 11 policy deployed and public/packaged equality verified.
 - Complete Mozilla developer-account setup and review the exact package's data
   declarations, permissions, policy, support details and distribution choice.
 - Retest live Google/YouTube/Shorts, native permission grant/rejection/revocation,
@@ -37,3 +37,35 @@ Official references: [background environments](https://developer.mozilla.org/en-
 [Mozilla data consent](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/),
 [signing/distribution](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/),
 [Zen extensions](https://docs.zen-browser.app/user-manual/extensions).
+
+## Listed submission prepared November 11
+
+The user has authorized public Firefox marketplace publication. CI for PR #1 is
+successful, the exact unsigned Firefox package passes Mozilla lint, and the
+updated public privacy policy is deployed and byte-identical to the package.
+The public AMO lookup for `ai-slop-blocker@deletecookies.dev` currently returns
+404. No upload, signing, submission or public availability is claimed.
+
+The developer dashboard requires Mozilla sign-in behind a CAPTCHA; no Mozilla
+API issuer/secret is configured locally. Secure credential inputs are required
+for official API submission. Do not put signing credentials in Git or chat.
+
+`amo-metadata.json` prepares a **listed**, desktop-Firefox submission. It starts
+with `is_disabled: true` so policy/icon/preview metadata can be completed before
+publishing is enabled. The initial release is marked experimental. The draft
+uses Mozilla's `all-rights-reserved` choice because the repository has no
+open-source license grant; this preserves existing rights rather than choosing
+a new open-source license. `amo-policy.json` holds the actual published policy.
+Use `extension/icons/icon-128.png` and the actual Settings screenshot for assets.
+
+After authentication, submit with `web-ext sign --channel listed` and the prepared
+metadata, set the policy through the documented `eula_policy` API, attach the
+icon/preview, then enable listing publication. Check the actual version's file
+status and anonymous marketplace install link; an upload or pending review is
+not proof of public availability. Preserve the upload UUID if submission status
+is ambiguous rather than blindly re-uploading.
+
+API references: [listed add-on creation](https://mozilla.github.io/addons-server/topics/api/addons.html#create),
+[version license/compatibility](https://mozilla.github.io/addons-server/topics/api/addons.html#version-create),
+[privacy policy](https://mozilla.github.io/addons-server/topics/api/addons.html#eula-and-privacy-policy-edit),
+[license choices](https://mozilla.github.io/addons-server/topics/api/licenses.html).

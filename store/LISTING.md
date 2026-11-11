@@ -1,6 +1,6 @@
 # Chrome Web Store listing draft
 
-Draft for Chrome package 0.2.0. Automated and installed-extension fixture checks are recorded in RELEASE-CHECKS.md. Live website retests, deployment of the November 11 policy, owner dashboard checks, upload and publication remain pending.
+Draft for Chrome package 0.2.0. Automated and installed-extension fixture checks are recorded in RELEASE-CHECKS.md. Live website retests, owner dashboard checks, upload and publication remain pending.
 
 ## Name
 
@@ -49,7 +49,7 @@ Source and community-list review: https://github.com/raduvlad92/AI-Slop-Blocker
 
 ## Public links and contact
 
-- Privacy policy: `https://aislopblocker-api.radu-vlad-92.workers.dev/privacy` — November 11 policy source update must be deployed before submission.
+- Privacy policy: `https://aislopblocker-api.radu-vlad-92.workers.dev/privacy` — November 11 policy is deployed and byte-identical to the packaged copy.
 - Support email: `contact@deletecookies.dev`.
 - Homepage/source: `https://github.com/raduvlad92/AI-Slop-Blocker`.
 - Support/issues: `https://github.com/raduvlad92/AI-Slop-Blocker/issues`.

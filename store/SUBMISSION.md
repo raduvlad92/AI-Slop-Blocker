@@ -2,8 +2,8 @@
 
 Version 0.2.0 adds cross-browser support, backups and recovery/community controls.
 Current checks are recorded in RELEASE-CHECKS.md. The checked 0.1.2 backend/migration
-baseline below is historical. Before either store submission, deploy the November
-11 policy sources, retest live websites, complete owner dashboard declarations,
+baseline below is historical. The November 11 policy is deployed and byte-verified. Before either store
+submission, retest live websites and complete owner dashboard declarations,
 and use the exact 0.2.0 browser-specific archive. Firefox signing and its native
 optional data permissions are covered in [FIREFOX.md](FIREFOX.md).
 
@@ -72,7 +72,7 @@ For review testing of opt-in reports, use the configured production endpoint and
 
 - [x] Chrome/Firefox ZIPs 0.2.0 contain the generated manifests, icons, updated policy source and configured reporting host; resource/CRC/secret exclusion checked. Firefox signing is pending.
 - [x] Icon exports, editable sources, and the 440×280 promotional PNG are prepared and visually/dimensionally checked.
-- [ ] Deploy November 11 policy source and verify public/packaged equality for 0.2.0.
+- [x] November 11 policy deployed and public/packaged equality verified for 0.2.0.
 - [x] Contributor migration/private backfill, admin authentication and live status/ignore/resume behavior verified; real reports preserved, synthetic records/rules removed. Retention/cleanup regressions pass; Worker holds `STATS_KEY` and no GitHub token.
 - [x] Updated private Actions run/output verified: aggregate active/eligible/ignored counts without UUIDs, hashes, individual histories, or reasons.
 - [x] Five private helper security checks and eight synthetic admin UI checks pass, including credential exclusion from the browser, CSRF/Host and no-redirect protection; install/consent regressions cause no report upload.
