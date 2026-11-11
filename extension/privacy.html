@@ -28,18 +28,19 @@
 <body>
   <main>
     <h1>AI Slop Blocker Privacy Policy</h1>
-    <p class="updated">Last updated: October 14, 2026</p>
+    <p class="updated">Last updated: November 11, 2026</p>
     <p class="summary">Your personal block list, settings, statistics, and a random installation ID are stored on your device. Sharing future blocks is optional and off by default; installing the extension does not send the installation ID to the reporting server. Opt-in reports and their review history expire after 90 days. A minimal hashed ignore record can remain until a moderator resumes or deletes it.</p>
 
     <h2>Who operates the extension</h2>
     <p>The operator is the AI Slop Blocker maintainer (<a href="https://github.com/raduvlad92" rel="noreferrer">raduvlad92</a>). The extension and community lists are available in the <a href="https://github.com/raduvlad92/AI-Slop-Blocker" rel="noreferrer">public project repository</a>. There are no user accounts, payments, advertising, or installation analytics beacons in the extension.</p>
 
     <h2>Data on your device</h2>
-    <p>The extension uses Chrome's local extension storage for your personal video and channel blocks, settings, reporting consent, a randomly generated installation UUID, cached community lists, channel identity mappings, and blocking statistics. The UUID is generated locally on installation; updates preserve a valid ID and repair missing/invalid legacy IDs. It stays stable across worker restarts and reporting on/off choices. This is not automatic installation telemetry: the ID is sent to the reporting server only with future block reports after you opt in, not on install or opt-in itself. Statistics include event times, event types, and estimated minutes saved. They are not uploaded as a browsing or statistics log.</p>
+    <p>The extension uses your browser's local extension storage (Chrome, Firefox or Zen) for your personal video and channel blocks, settings, reporting consent, a randomly generated installation UUID, cached community lists, local allow exceptions, recent Undo records, channel identity mappings, and blocking statistics. The UUID is generated locally on installation; updates preserve a valid ID and repair missing/invalid legacy IDs. It stays stable across worker restarts and reporting on/off choices. This is not automatic installation telemetry: the ID is sent to the reporting server only with future block reports after you opt in, not on install or opt-in itself. Statistics include event times, event types, and estimated minutes saved. They are not uploaded as a browsing or statistics log.</p>
     <p>The extension reads details on Google Search and YouTube pages to hide AI Overviews, identify video and channel cards, and apply your filters. It does not send your search queries, full browsing history, full watch history, page contents, passwords, or payment information to the reporting server. Local records remain on your device until removed, pruned by the extension, or cleared by uninstalling it.</p>
 
+    <p>Backups are JSON files you explicitly export to your device. They contain personal blocks, exceptions, and filter/playback settings, but no installation UUID, reporting consent, statistics, community cache, or Undo history. Imports merge those portable fields locally and do not send reports or change your sharing choice. Watch once is temporary to the current tab/visit; Always allow exceptions remain local. Undo and local block removal do not retract reports already sent.</p>
     <h2>Optional community reporting</h2>
-    <p>Reporting is disabled by default. You can choose to share future blocks in the extension's Options page. Enabling it does not replay earlier local blocks or send a separate installation event. Each future report contains:</p>
+    <p>Reporting is disabled by default. You can choose to share future blocks in the extension's Options page. Enabling it does not replay earlier local blocks or send a separate installation event. In Firefox and Zen, native optional report-data permissions are also required; granting them alone does not enable reporting. Revoking them disables sharing. Each future report contains:</p>
     <ul>
       <li>The YouTube video ID and, when available, channel ID or handle and channel name.</li>
       <li>Whether you chose to block a video or a channel.</li>

@@ -179,3 +179,11 @@ button:hover { border-color: var(--accent); color: var(--accent); }
   align-items: center;
   gap: 12px;
 }
+.list-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.list-search { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.list-search input { flex: 1; min-width: 0; padding: 7px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.block-list .id { overflow-wrap: anywhere; min-width: 0; text-decoration: none; }
+.block-list .id:hover { text-decoration: underline; }
+.block-list .id small { display: block; font: 12px/1.4 system-ui, sans-serif; }
+[data-state="warning"] { color: var(--accent); }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

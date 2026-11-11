@@ -15,7 +15,7 @@ const BLOCK = {
   info: { videoId: "AAAAAAAAAAA", channelId: "@creator", channelName: "Creator" },
 };
 
-function harness(initial = {}, postResponse = async () => ({ ok: true, status: 200 })) {
+function harness(initial = {}, postResponse = async () => ({ ok: true, status: 200 }), nativePermissions) {
   const state = structuredClone(initial);
   const reports = [];
   const requests = [];
@@ -44,6 +44,14 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
     alarms: { create() {}, onAlarm: { addListener() {} } },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} },
   };
+  let removed;
+  if (nativePermissions) {
+    chrome.runtime.getBrowserInfo = async () => ({ name: "Firefox" });
+    chrome.permissions = {
+      getAll: async () => ({ data_collection: nativePermissions.types }),
+      onRemoved: { addListener(callback) { removed = callback; } },
+    };
+  }
   const startWorker = () => vm.runInNewContext(source, {
     chrome, console, Date,
     ASBChannels: identity.ASBChannels,
@@ -80,6 +88,7 @@ function harness(initial = {}, postResponse = async () => ({ ok: true, status: 2
     install: (reason) => installed({ reason }),
     startup: () => startup(),
     restartWorker: startWorker,
+    removeNativePermission: (types) => removed({ data_collection: types }),
     uuidCalls: () => uuidCalls,
     optionsOpened: () => optionsOpened,
   };
@@ -325,4 +334,28 @@ test("settings-only changes cannot grant or reset reporting consent", async () =
   app.state.settings = { hideYouTube: false, shareReports: false };
   assert.equal(app.state.reportingConsent.enabled, true);
   assert.equal(app.uuidCalls(), 1);
+});
+
+
+test("Firefox requires native data consent and revocation stops later reports", async () => {
+  const permissions = { types: [] };
+  const app = harness({ installId: INSTALL_ID }, undefined, permissions);
+  assert.equal((await app.setReporting(true)).ok, false);
+  permissions.types = ["browsingActivity", "websiteContent", "websiteActivity", "personallyIdentifyingInfo"];
+  assert.equal((await app.setReporting(true)).ok, true);
+  await app.send(BLOCK); await flush();
+  assert.equal(app.reports.length, 1);
+  permissions.types = [];
+  app.removeNativePermission(["browsingActivity"]); await flush();
+  assert.equal(app.state.reportingConsent.enabled, false);
+  await app.send({ ...BLOCK, info: { ...BLOCK.info, videoId: "BBBBBBBBBBB" } }); await flush();
+  assert.equal(app.reports.length, 1);
+  assert.ok(app.state.personal.videos.BBBBBBBBBBB);
+});
+
+test("Firefox checks native consent before every attempt even if stored sharing remains on", async () => {
+  const app = harness({ installId: INSTALL_ID, reportingConsent: { enabled: true } }, undefined, { types: [] });
+  await app.send(BLOCK); await flush();
+  assert.equal(app.reports.length, 0);
+  assert.ok(app.state.personal.videos.AAAAAAAAAAA);
 });

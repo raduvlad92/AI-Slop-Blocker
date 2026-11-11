@@ -111,6 +111,7 @@
             const data = await storage.get({
               channelAliases: {}, personal: { videos: {}, channels: {} },
               community: { videos: [], channels: [], syncedAt: 0 }, communityChannelBindings: {},
+              allowlist: { videos: {}, channels: {} },
             });
             const record = { id: result.id, resolvedAt: now() };
             const currentAliases = new Set(result.aliases);
@@ -130,10 +131,21 @@
                 delete data.personal.channels[key];
               }
             }
+            for (const key of Object.keys(data.allowlist.channels)) {
+              if (key !== result.id && canonical(key, data.channelAliases, now()) === result.id) {
+                data.allowlist.channels[result.id] ||= data.allowlist.channels[key];
+                delete data.allowlist.channels[key];
+              }
+            }
             data.community.channels = [...new Set(data.community.channels.map((key) => {
               const normalized = normalize(key);
               if (normalized?.startsWith("@") && canonical(key, data.channelAliases, now()) === result.id) {
                 data.communityChannelBindings[normalized] = result.id;
+                const metadata = data.community.metadata?.channels;
+                if (metadata?.[key]) {
+                  metadata[result.id] ||= metadata[key];
+                  delete metadata[key];
+                }
                 return result.id;
               }
               return key;
@@ -147,8 +159,8 @@
     }
 
     return async function resolve(ids) {
-      const data = await storage.get({ channelAliases: {}, personal: { videos: {}, channels: {} }, community: { channels: [] } });
-      const blocked = new Set([...Object.keys(data.personal.channels), ...data.community.channels].map(normalize));
+      const data = await storage.get({ channelAliases: {}, personal: { videos: {}, channels: {} }, community: { channels: [] }, allowlist: { channels: {} } });
+      const blocked = new Set([...Object.keys(data.personal.channels), ...data.community.channels, ...Object.keys(data.allowlist.channels)].map(normalize));
       const sources = [...new Set(ids.map(normalize).filter((id) => id && blocked.has(id)))].slice(0, 20);
       // Small batches bound network concurrency and finish inside the
       // message lifetime. A failed lookup leaves the existing block intact.

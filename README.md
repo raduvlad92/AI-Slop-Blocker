@@ -1,222 +1,146 @@
 # 🤖🚫 AI Slop Blocker
 
-> **Release 0.1.2 verified** — the contributor backend/migration, updated privacy
-> policy, tests, Settings screenshot, ZIP, private admin view, and GitHub review
-> workflow are verified. The user's unpacked Chrome 0.1.2 retest,
-> developer-account checks, and Web Store submission are not completed.
+A free, local-first desktop extension for **Chrome, Firefox and Zen**. Version
+**0.2.0** adds Firefox/Zen support, portable backups, recovery controls and
+community exceptions. Store signing, submission and publication are still pending.
 
-A free, local-first extension for desktop Chrome that lets you choose what to
-hide on Google Search and YouTube:
+- **Google Search:** hide positively identified English-labelled AI Overviews
+  while keeping ordinary search results visible.
+- **YouTube:** manually block videos or channels from watch pages and Shorts,
+  with optional thumbnail controls for feeds, search and recommendations.
+- **Recovery:** Undo a recent block, Watch once for the current visit, or Always
+  allow a video/channel across personal and community matches.
+- **Playback:** show a blocking overlay, redirect home, skip to the next video,
+  or play a sidebar recommendation. The overlay explains the block's source.
+- **Settings:** search/open list entries, export/import personal blocks,
+  exceptions and settings, and inspect community sync failures or overdue updates.
 
-- **Google Search** — hides positively identified, English-labelled AI Overview
-  answer boxes while preserving ordinary results. The filter can be toggled off.
-- **YouTube** — a "🤖 AI Slop" button on watch pages and Shorts lets you manually
-  block a video or channel. An optional thumbnail button makes blocking available
-  on supported feeds, searches, and recommendations.
-- **Playback choices** — a blocked overlay, redirect to the YouTube homepage,
-  skip to the next video, or play a sidebar recommendation.
+There is no AI detector or automatic classification of ordinary content. Google
+and YouTube layout changes can affect compatibility. The public community lists
+are currently empty; personal blocking and Google filtering work independently.
 
-The extension does not automatically classify ordinary content or run an AI
-detector. Google and YouTube can change their layouts, so compatibility can
-change. **The public community lists are currently empty**; personal blocking
-and Google filtering work independently.
+## Install for development
 
-## Privacy and optional community reports
-
-No accounts or payments are required. Personal block lists, settings, statistics,
-and cached lists live in `chrome.storage.local` on your device. **Sharing reports
-is off by default.** In Settings, **Share my future block reports** explicitly
-enables future reports; changing filter settings does not grant consent. Enabling
-sharing does not upload existing local blocks, and turning it off stops future
-reports and pending retries.
-
-When you opt in, a report contains `{videoId, channelId, channelName, scope,
-installId}` when available; a channel block also includes its current video.
-The random installation UUID is generated locally on installation; updates keep
-a valid ID and repair a missing/invalid one. It stays on the device while sharing
-is off. There is no automatic installation telemetry, separate install event, or
-UUID upload when consent is enabled. With opted-in future reports it supports
-deduplication, limits, and contributor review. The backend derives a stable
-SHA-256 contributor ID from it. These identifiers are not verified people;
-reinstalling, resetting local data, or choosing a new client ID can evade ignores.
-The server adds a receipt time. Full search, browsing and watch histories,
-accounts, email addresses, and local statistics are not uploaded.
-
-The reporting service uses Cloudflare's connection information for short-lived,
-IP-derived abuse counters without storing raw IP addresses in D1. Raw UUID-linked
-reports and their review statuses/history expire after 90 days, are excluded from
-review aggregates, and are removed by daily cleanup. A minimal ignored-ID registry
-keeps the contributor hash, optional moderator reason, and update time until a
-moderator resumes or deletes it. Historical private aggregate snapshots and public
-curated Git history can remain. Turning off sharing or removing a local block does not retract
-earlier reports. See the [packaged privacy policy](extension/privacy.html) and
-the [public policy](https://aislopblocker-api.radu-vlad-92.workers.dev/privacy).
-The October 14 policy update is live and byte-identical to both local policy copies.
-
-GitHub list downloads and public YouTube channel-metadata requests can still
-occur with reporting off. Channel lookups only concern already blocked channels
-and omit browser credentials. They do not carry the installation UUID or personal
-block list. These public downloads are parsed as data; remote scripts are not
-executed.
-
-Reports help a human review candidates for a public community blocklist. Every
-addition is a manually reviewed PR; reports never automatically become public
-blocks. See [blocklist/CONTRIBUTING.md](blocklist/CONTRIBUTING.md). Privacy and
-support contact: **contact@deletecookies.dev**.
-
-The private contributor view lets a moderator inspect retained report history
-and counts, mark reports pending/useful/false positive, and choose **Ignore
-reports** or **Resume reports** for an installation-derived contributor ID.
-Ignoring excludes its past and future reports from community review; local
-blocking and list sync keep working. It does not automatically remove published
-community entries. GitHub review files contain aggregate counts only, never raw
-UUIDs, contributor hashes, individual histories, or moderator reasons.
-
-Installation/country statistics come from Chrome Web Store metrics if the
-extension is published there. The extension adds no installation analytics beacon
-or email/IP/country fields to reports; normal hosting connection information is
-handled as described in the policy.
-
-## How the pieces connect
-
-1. **[/extension](extension/)** — the Manifest V3 extension. Hides Google's AI
-   Overview, adds manual YouTube block controls, stores personal blocks locally,
-   and syncs the community lists from GitHub raw every six hours. A block is
-   submitted to the reporting API only after explicit opt-in.
-2. **[/backend](backend/)** — a single Cloudflare Worker with a D1 database.
-   `POST /submit` receives optional reports with per-install and independent
-   abuse limits. `GET /privacy` serves the public policy. `GET /stats` and
-   read-only `GET /review` require a Bearer administrator credential.
-   The private contributor/report moderation endpoints require the same admin
-   credential; the extension never receives it.
-3. **Private review repository** — a GitHub Actions workflow in
-   `raduvlad92/AI-Slop-Review` uses the `ASB_API_URL` repository variable and
-   `ASB_STATS_KEY` Actions secret to read `GET /review`. It commits aggregate
-   `REVIEW.md` and `review.json` snapshots using the job's ephemeral,
-   repository-scoped `GITHUB_TOKEN`. This release mode does not keep a persistent
-   GitHub personal access token in the Worker. Human review promotes candidates
-   through PRs. The updated workflow completed
-   [run 38489277906](https://github.com/raduvlad92/AI-Slop-Review/actions/runs/38489277906)
-   successfully; the run is accessible to authorized private-repository users.
-   Updated aggregate snapshots include active/eligible installation-ID counts
-   within 90 days and a persistent ignored-registry count, without contributor
-   hashes or histories. The actual Markdown/JSON snapshot format was verified.
-4. **[/blocklist](blocklist/)** — the public community list: two JSON arrays
-   of `{id, name, added, reason}` entries fetched directly by every install
-   (the extension uses only `id`; the rest keeps the list auditable — what was
-   added, when, and why). Curated **manually** from the
-   review feed via PRs — never auto-merged (that's the anti-brigading defense;
-   see [blocklist/CONTRIBUTING.md](blocklist/CONTRIBUTING.md)). A GitHub
-   Action validates the JSON on every PR.
-
-See [backend/README.md](backend/README.md) for deployment, admin authentication,
-retention, and the private Actions review workflow.
-
-For the maintainer's private contributor view, run `npm run review:admin` and
-open `http://127.0.0.1:8768/`. The local Node server uses the already configured
-private administrator credential outside the repository. The key stays in that
-process; it is not pasted into the browser or put in URLs/browser storage. This
-administration tool is separate from the packaged extension. Synthetic UI/helper
-security checks and the real production read-only view passed verification. The
-actual contributor history opened without exposing the admin secret or browser
-Authorization headers, with no console errors and no changes to real reports.
-
-Channel matching resolves blocked channels' public YouTube metadata without
-cookies, caches their canonical `UC…` IDs and current handles for seven days,
-and keeps existing personal/community blocks tied to the resolved creator.
-Only channels already on a block list are looked up. Failed lookups preserve
-the existing ID/handle match. Directly opened Shorts use the same block button
-and playback protection; their next-video action uses Shorts navigation.
-
-## Running the extension locally
-
-1. `chrome://extensions` → enable Developer mode → **Load unpacked** →
-   select the `extension/` folder.
-2. Open an English Google Search page that contains an AI Overview → the filter
-   hides the identified answer box. A search without an AI Overview has nothing
-   to hide.
-3. Open any YouTube video → click **🤖 AI Slop** next to the channel row under
-   the player → pick "Block this video" or "Block channel". Blocked videos
-   vanish from feeds/search/sidebar and the counter ticks up. To also get the
-   overlay button on every thumbnail, enable "Show block button on thumbnails"
-   in settings (off by default).
-4. The popup / options page (right-click the extension icon → Options) has filter
-   controls, personal lists, community sync status, estimated statistics, and the
-   optional reporting choice. Keep sharing off for local-only block reports.
-5. Remove personal entries in Options to restore content. A channel block also
-   records its current video, so restoring that video can require removing both
-   the channel entry and video entry. Undo, Watch once and community allowlists
-   remain deferred.
-
-The community blocklist syncs from this repo
-(`raw.githubusercontent.com/raduvlad92/AI-Slop-Blocker/main/blocklist/…`).
-The production service is `https://aislopblocker-api.radu-vlad-92.workers.dev`.
-Live 0.1.2 checks confirmed protected contributor/moderation endpoints, preserved
-existing reports through migration/private hash backfill, and exercised report
-status changes, ignored past votes, ignored future submissions without insertion,
-and resumed eligibility. Synthetic test reports and ignore rules were removed;
-the existing real reports were retained. Daily cleanup is scheduled
-for 06:00 UTC; only the administrator secret is stored in the Worker, with no
-GitHub token. Both public GitHub raw lists returned successfully and are empty.
-PNG icons at 16/32/48/128px, a 440×280 promotional tile,
-listing/declaration drafts, and a 1280×800 Settings screenshot are prepared in
-[store/](store/). The screenshot captures the actual Options HTML/JavaScript with
-a fresh-install Chrome API fixture; it is not evidence of an installed extension
-running on live Google or YouTube. See [store/SUBMISSION.md](store/SUBMISSION.md)
-for the remaining store checklist. The Settings screenshot was regenerated and
-visually checked for the updated 0.1.2 disclosure, with sharing clearly off.
-
-## Permissions rationale (Chrome Web Store review)
-
-manifest.json is strict JSON so the justifications live here:
-
-| Permission | Why |
-|---|---|
-| `storage` | A local random installation ID, personal block lists, explicit reporting consent, settings, local counters/events, cached lists and channel mappings. |
-| `alarms` | Six-hour community list refresh and daily badge updates. |
-| `*://*.google.com/search*` | Content script that hides the AI Overview box. Scoped to search pages only. |
-| `*://*.youtube.com/*` | Block button, filtering and credential-free public metadata lookups for blocked channels. |
-| `https://raw.githubusercontent.com/*` | Fetching the public blocklist JSON (unauthenticated, public files). |
-| Reporting Worker host in the release manifest | Best-effort block reports over HTTPS, only after explicit opt-in. |
-
-## Non-goals
-
-- No AI-detection heuristics for regular Google results — too unreliable.
-- No accounts, logins, or payments, ever.
-- No automatic promotion of submissions into the public blocklist.
-
-## Development checks
-
-With Node 22.13 or later, no dependency installation is needed:
+Use Node 22.13+ and Python 3.9+:
 
 ```sh
-npm test
-npm run validate
-npm run test:browser
+npm ci
+npm run package
 ```
 
-Open `http://127.0.0.1:8766/` for browser regressions. If that port is busy,
-use `ASB_TEST_PORT=8767 npm run test:browser`. The browser suite runs the actual
-extension scripts against controlled DOM fixtures with mocked Chrome APIs and
-network responses; it never sends reports. Node tests cover storage races,
-Google safety, identity resolution and backend authentication/quotas, including
-real in-memory SQLite for the SQL. These checks complement manual unpacked
-extension testing on live Google/YouTube; the user's 0.1.2 retest remains pending.
+The package command generates validated ZIPs, checksums and unpacked directories:
 
-`npm run package` builds the release ZIP and checks its assets/configuration.
-The locally generated `releases/AI-Slop-Blocker-0.1.2.zip` is verified:
-19 extension files, 47,020 bytes, archive CRC/resource checks, matching policy,
-production endpoints, and exclusion of admin tools, backend/scripts/tests and
-secrets. SHA-256:
-`46a6a977d37a691632e1ed0b437dcdf0ef1bf231e417f05f06e48e3470f497ed`.
-Generated ZIP/checksum files are excluded from Git; regenerate them with the
-package command. See [the release checks](store/RELEASE-CHECKS.md) for live evidence.
+- `releases/AI-Slop-Blocker-0.2.0-chrome.zip` and `releases/chrome/`
+- `releases/AI-Slop-Blocker-0.2.0-firefox.zip` and `releases/firefox/`
 
-Release checks passed 118 Node tests, 12 extension browser fixtures, eight private
-admin synthetic browser checks, five helper security checks, the real admin
-read-only UI check, and the updated private GitHub review run/output inspection.
-Controlled fixtures do not replace the user's live unpacked
-desktop Chrome 0.1.2 retest, which remains pending. A verified package is not an accepted
-store submission or a published extension.
+In Chrome, enable Developer mode in `chrome://extensions`, select **Load
+unpacked**, and choose `releases/chrome/` (or the source `extension/` folder).
 
-See [ROADMAP.md](ROADMAP.md) for the selected implementation batch and parked work.
+In Firefox or Zen **142+**, open `about:debugging#/runtime/this-firefox`, choose
+**Load Temporary Add-on**, and select `releases/firefox/manifest.json`. The same
+Firefox build works in Zen. Temporary installs end when the browser restarts;
+normal persistent Firefox installation requires Mozilla signing, including for
+self-distribution. See [Firefox release preparation](store/FIREFOX.md).
+
+The source manifest targets Chrome. Packaging creates Firefox's background event
+page and Mozilla-specific manifest fields from the same source; do not load the
+Chrome-only source manifest directly into Firefox.
+
+## Blocking, recovery and backups
+
+Open an English Google Search with an AI Overview, or use the **🤖 AI Slop**
+button under a YouTube video/on a Short. Thumbnail buttons are optional in
+Settings. A blocked player explains whether its video or channel matched your
+personal list or the community list, including a community review reason when
+available.
+
+**Undo** appears in the block confirmation for eight seconds; its token lasts up
+to five minutes. It restores that action without overwriting subsequent edits.
+Undo and local removal do not retract any report already sent. **Watch once**
+applies only in that tab for the current visit, ending on navigation/reload.
+**Always allow** saves a permanent local exception, manageable in Settings, and
+applies to both personal and community blocks. Explicitly blocking again clears matching video and channel exceptions.
+
+New channel blocks track the companion video they create. Removing the channel
+also removes its companion videos, while keeping independently blocked videos.
+Older blocks lack this relationship metadata; remove surviving legacy video
+entries separately.
+
+**Export backup** creates a versioned JSON file with personal blocks, exceptions
+and filter/playback settings. **Import backup** validates the complete file and
+merges new entries, keeping existing entries and applying imported settings.
+Imports are limited to 2 MB and 5,000 entries per list. Installation IDs,
+reporting consent, statistics, cached community data and Undo history are never
+transferred. Importing does not send reports. Backups stay in the file you save;
+protect them like your other personal files.
+
+## Privacy and optional reporting
+
+No accounts or payments are required. Personal lists, exceptions, settings,
+statistics, identity mappings and cached community lists use local extension
+storage. **Share my future block reports** is off by default. Enabling it never
+uploads existing blocks or sends installation telemetry. Disabling it stops
+future reports and pending retries.
+
+Opted-in reports contain `{videoId, channelId, channelName, scope, installId}`
+when available; channel reports also identify their current video. A random UUID
+is generated locally on installation, retained on update, and sent only with
+opted-in future reports. The server derives a contributor hash for deduplication,
+limits and private moderation. IDs represent installations, not verified people.
+
+Firefox/Zen additionally require the native optional report-data permission.
+Granting that permission alone does not enable sharing. Revocation disables
+sharing, and every submission attempt checks permission again.
+
+There is no upload of full browsing/search/watch histories or local statistics.
+Public GitHub list downloads and credential-free YouTube metadata lookups for
+already blocked or allowed channels can still occur with sharing off. Downloaded data is
+never executed as remote code.
+
+Raw reports and moderation history expire after 90 days. A minimal hashed ignore
+registry can remain until resumed/deleted. GitHub review snapshots contain only
+aggregates; curated public history can remain. See the [packaged policy](extension/privacy.html)
+and [backend documentation](backend/README.md). The November 11 policy sources
+also document Firefox and backups; deploying that updated public policy is a
+remaining release step. Privacy/support: **contact@deletecookies.dev**.
+
+## Community curation
+
+1. Optional reports are retained in the Cloudflare Worker/D1 backend.
+2. The private `raduvlad92/AI-Slop-Review` repository's daily Actions workflow
+   requests administrator-protected `GET /review` and commits aggregate
+   `REVIEW.md`/`review.json` using its ephemeral repository token.
+3. A maintainer reviews candidates and proposes public entries by PR to
+   `blocklist/videos.json` or `blocklist/channels.json`. Marking a report useful
+   does not publish it; there is no automatic promotion.
+4. Installs fetch the public lists every six hours, or through **Sync now**.
+   Failed updates preserve the previous valid cache and display an error.
+
+See [CONTRIBUTING.md](blocklist/CONTRIBUTING.md). Maintainer report moderation is
+available separately through `npm run review:admin` at `127.0.0.1:8768`; its
+credential stays in the local Node process and is never packaged in the extension.
+
+## Verification
+
+```sh
+npm test                       # Node, including backend SQLite and consent/storage regressions
+npm run validate               # public blocklist structure
+npx playwright install chromium firefox
+npm run test:browser:ci         # controlled DOM regressions in Chromium and Firefox
+npm run package                # both archives; manifest/resource/policy/CRC checks
+npm run lint:firefox            # Mozilla manifest and source lint; warnings fail
+npm run test:extension          # actual installed extension, isolated profiles, local fixtures
+```
+
+The installed-extension smoke suite checks real APIs, installation defaults,
+message round trips, import/export, Undo, Google filtering and YouTube recovery
+without production reports. It tests Chromium and Firefox; it also tests native
+Zen when available at `/Applications/Zen.app/Contents/MacOS/zen` or
+`ASB_ZEN_BINARY`. `ASB_FIREFOX_BINARY` can override the Firefox executable.
+
+PR CI runs the Node/backend tests, blocklist validation, both DOM engines,
+packaging, Firefox lint and installed Chromium/Firefox checks. Zen's native smoke
+is local when its binary is available. Controlled fixtures do not establish live
+Google/YouTube compatibility, restart behavior of signed packages, or store
+approval. See [release evidence](store/RELEASE-CHECKS.md),
+[submission preparation](store/SUBMISSION.md) and [ROADMAP.md](ROADMAP.md).

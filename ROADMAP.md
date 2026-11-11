@@ -1,11 +1,26 @@
 # Review implementation plan
 
-Review items 1–5 and release 0.1.2's contributor backend, migration, disclosures,
-tests, screenshot, package, real private admin view, and updated GitHub review
-run/output are verified. The user's live unpacked desktop Chrome 0.1.2 retest is
-pending. Nothing has been submitted or published to the Web Store.
+Release 0.2.0 implements the next browser/portability/recovery batch. Verification
+and remaining store/live-site gates are recorded in store/RELEASE-CHECKS.md.
+The 0.1.2 backend/migration evidence below is retained as historical context.
 
-## Current batch
+## Release 0.2.0 implementation plan
+
+The next batch is authorized for implementation, testing, and push. Store
+submission/signing/publication remains a separate owner-account step.
+
+- [x] Firefox and Zen: shared source/API selection, generated Firefox event-page manifest (desktop 142+), optional native report-data consent, Chrome/Firefox packages and lint.
+- [x] Portability: versioned JSON export/import of personal blocks, exceptions and filter/playback settings; validated atomic merge, no identity/consent/statistics transfer and no report replay.
+- [x] Recovery: five-minute Undo tokens with conflict checks, tab-local Watch once, permanent video/channel exceptions, and removal of channel-created companion videos while preserving independently blocked videos.
+- [x] Community controls: personal/community explanations, retained review reasons, exceptions and management, visible failed/overdue sync with the last valid cache preserved.
+- [x] Verification: Node and browser-engine regressions, installed-extension smoke checks, browser-specific package lint, and PR CI for extension/backend changes.
+
+Acceptance includes Google result safety, YouTube cards/watch/Shorts, persistence,
+concurrent storage changes, permission revocation, invalid imports, and no
+unsolicited reporting. Controlled fixtures and installed-extension smoke checks
+are recorded separately from live Google/YouTube and store approval.
+
+## Completed 0.1.2 batch
 
 - [x] 1. Repair thumbnail actions and retry watch overlays for delayed/replaced players.
 - [x] 2. Serialize personal blocks, counters, events and removals through the background worker.
@@ -53,12 +68,8 @@ optional later improvement, not completed release protection.
 
 ## Parked for later
 
-- **6. Recovery from mistakes:** Undo, Watch once, Always allow, and clear personal/community blocking reasons. The existing behavior where blocking a channel also blocks its current video remains; removing that channel can leave the video blocked.
 - **Starter community lists:** seed with manually reviewed entries; no automatic promotion.
-- **List management:** export/import, search, readable video titles and links.
-- **Sync status:** show failed updates and stale cached lists clearly.
 - **Statistics:** distinguish manual block actions from hidden content and make estimated time savings explicit.
 - **Accessibility:** menu focus, Escape dismissal and accessible toast feedback.
-- **Broader automation:** CI for extension/backend changes and a larger live navigation/markup compatibility matrix. Focused regressions for this batch are included now.
 
 Manual community curation, no accounts and no AI-detection heuristics remain the product boundaries.

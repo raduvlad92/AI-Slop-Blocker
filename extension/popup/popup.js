@@ -1,3 +1,5 @@
+const api = typeof browser === "undefined" ? chrome : browser;
+
 const DEFAULTS = {
   settings: {
     hideAIOverview: true,
@@ -20,7 +22,7 @@ function formatMinutes(mins) {
 }
 
 async function render() {
-  const data = await chrome.storage.local.get(DEFAULTS);
+  const data = await api.storage.local.get(DEFAULTS);
   $("counter").textContent = data.blockedCount.toLocaleString();
   $("toggle-google").checked = data.settings.hideAIOverview;
   $("toggle-youtube").checked = data.settings.hideYouTube;
@@ -46,17 +48,17 @@ async function render() {
 }
 
 async function saveSettings() {
-  // Merge over stored settings — the popup doesn't own showCardButtons.
-  const { settings } = await chrome.storage.local.get({ settings: DEFAULTS.settings });
-  await chrome.storage.local.set({
-    settings: {
-      ...settings,
+  try {
+    const result = await api.runtime.sendMessage({ type: "asb-settings", settings: {
       hideAIOverview: $("toggle-google").checked,
       hideYouTube: $("toggle-youtube").checked,
-      watchAction:
-        document.querySelector('input[name="watchAction"]:checked')?.value || "overlay",
-    },
-  });
+      watchAction: document.querySelector('input[name="watchAction"]:checked')?.value || "overlay",
+    } });
+    if (!result?.ok) throw new Error("Couldn't save your settings. Please try again.");
+  } catch {
+    await render();
+    $("reporting-status").textContent = "Couldn't save your settings. Please try again.";
+  }
 }
 
 $("toggle-google").addEventListener("change", saveSettings);
@@ -64,7 +66,7 @@ $("toggle-youtube").addEventListener("change", saveSettings);
 document
   .querySelectorAll('input[name="watchAction"]')
   .forEach((r) => r.addEventListener("change", saveSettings));
-$("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+$("open-options").addEventListener("click", () => api.runtime.openOptionsPage());
 
-chrome.storage.local.onChanged.addListener(render);
+api.storage.local.onChanged.addListener(render);
 render();

@@ -6,6 +6,7 @@
 
 (() => {
   "use strict";
+  const api = typeof browser === "undefined" ? chrome : browser;
 
   // Video card elements across YouTube surfaces. New "lockup view model"
   // elements are YouTube's 2024+ markup; ytd-* renderers are the legacy ones
@@ -31,6 +32,10 @@
     communityVideos: new Set(),
     communityChannels: new Set(),
     channelAliases: {},
+    allowedVideos: new Set(),
+    allowedChannels: new Set(),
+    communityMetadata: { videos: {}, channels: {} },
+    personalVideoMetadata: {},
   };
 
   function refreshSets(data) {
@@ -44,10 +49,14 @@
     state.watchAction = action;
     state.blockedCount = data.blockedCount;
     state.personalVideos = new Set(Object.keys(data.personal.videos));
+    state.personalVideoMetadata = data.personal.videos;
     state.channelAliases = data.channelAliases || {};
     state.personalChannels = new Set(Object.keys(data.personal.channels).map(channelKey).filter(Boolean));
     state.communityVideos = new Set(data.community.videos);
     state.communityChannels = new Set(data.community.channels.map(channelKey).filter(Boolean));
+    state.allowedVideos = new Set(Object.keys(data.allowlist?.videos || {}));
+    state.allowedChannels = new Set(Object.keys(data.allowlist?.channels || {}).map(channelKey));
+    state.communityMetadata = data.community.metadata || { videos: {}, channels: {} };
     resolveListedChannels(data);
   }
 
@@ -60,7 +69,7 @@
   function resolveListedChannels(data) {
     if (resolvingChannels) return;
     const now = Date.now();
-    const ids = [...new Set([...Object.keys(data.personal.channels), ...data.community.channels])]
+    const ids = [...new Set([...Object.keys(data.personal.channels), ...data.community.channels, ...Object.keys(data.allowlist?.channels || {})])]
       .map((id) => ASBChannels.normalize(id)).filter(Boolean)
       .filter((id) => {
         const cached = state.channelAliases[id];
@@ -70,9 +79,9 @@
     if (!ids.length || !state.enabled) return;
     ids.forEach((id) => identityAttempts.set(id, now));
     resolvingChannels = true;
-    // The worker caches identities and broadcasts the update. Failed lookups
+    // The background caches selected channel identities and broadcasts the update. Failed lookups
     // keep the existing ID/handle match and never affect local persistence.
-    chrome.runtime.sendMessage({ type: "asb-resolve-channels", ids }).catch(() => {}).finally(() => {
+    api.runtime.sendMessage({ type: "asb-resolve-channels", ids }).catch(() => {}).finally(() => {
       resolvingChannels = false;
       ASB.getState().then(refreshSets).catch(() => {});
     });
@@ -170,13 +179,31 @@
     return info;
   }
 
+  let watchOnceId = null;
+  function blockReason(info) {
+    const channel = channelKey(info.channelId);
+    if (state.allowedVideos.has(info.videoId) || state.allowedChannels.has(channel)) return null;
+    const matches = [
+      ["personal", "video", state.personalVideos.has(info.videoId) && !state.personalVideoMetadata[info.videoId]?.channelBlock],
+      ["personal", "channel", state.personalChannels.has(channel)],
+      ["personal", "video", state.personalVideos.has(info.videoId)],
+      ["community", "video", state.communityVideos.has(info.videoId)],
+      ["community", "channel", state.communityChannels.has(channel)],
+    ];
+    for (const [source, scope, matchesBlock] of matches) {
+      if (!matchesBlock) continue;
+      let reason = "";
+      if (source === "community") {
+        const entries = state.communityMetadata[scope === "video" ? "videos" : "channels"] || {};
+        reason = (scope === "video" ? entries[info.videoId] :
+          Object.entries(entries).find(([id]) => channelKey(id) === channel)?.[1])?.reason || "";
+      }
+      return { source, scope, text: `${source === "personal" ? "Your" : "Community"} ${scope} block${reason ? ": " + reason : "."}` };
+    }
+    return null;
+  }
   function isBlocked(info) {
-    return (
-      (info.videoId &&
-        (state.personalVideos.has(info.videoId) || state.communityVideos.has(info.videoId))) ||
-      (info.channelId &&
-        (state.personalChannels.has(channelKey(info.channelId)) || state.communityChannels.has(channelKey(info.channelId))))
-    );
+    return info.videoId !== watchOnceId && !!blockReason(info);
   }
 
   // -------------------------------------------------------------------------
@@ -194,6 +221,8 @@
 
   function makeButton(className, onClick) {
     const btn = document.createElement("button");
+    btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
     btn.className = className;
     btn.type = "button";
     btn.title = "Mark as AI slop";
@@ -247,6 +276,8 @@
 
     const actions = document.createElement("div");
     actions.className = "asb-watch-actions";
+    actions.inert = true;
+    toggle.setAttribute("aria-expanded", "false");
 
     const mkMini = (label, scope) => {
       const b = document.createElement("button");
@@ -258,7 +289,7 @@
         (e) => {
           e.preventDefault();
           e.stopPropagation();
-          wrap.classList.remove("asb-expanded");
+          closeMenu();
           // Identity is read at click time — the owner row survives SPA
           // navigations while the video underneath it changes.
           block(scope, watchPageInfo(), null);
@@ -281,6 +312,9 @@
           // No channel link found (rare) — offer the video action only.
           miniChannel.style.display = watchPageInfo().channelId ? "" : "none";
           wrap.classList.add("asb-expanded");
+          toggle.setAttribute("aria-expanded", "true");
+          actions.inert = false;
+          actions.querySelector("button")?.focus();
         }
       },
       { capture: true }
@@ -290,13 +324,31 @@
     owner.appendChild(wrap);
   }
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { closeMenu(true); return; }
+    if (openMenuEl && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const items = [...openMenuEl.querySelectorAll("button")];
+      const index = items.indexOf(document.activeElement);
+      items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    }
+  });
   let openMenuEl = null;
-  function closeMenu() {
+  let menuTrigger = null;
+  function closeMenu(restoreFocus = false) {
+    if (restoreFocus) (menuTrigger || document.querySelector(".asb-watch.asb-expanded .asb-watch-toggle"))?.focus();
+    menuTrigger?.setAttribute("aria-expanded", "false");
+    menuTrigger = null;
     openMenuEl?.remove();
     openMenuEl = null;
     document
       .querySelectorAll(".asb-watch.asb-expanded")
-      .forEach((el) => el.classList.remove("asb-expanded"));
+      .forEach((el) => {
+        el.classList.remove("asb-expanded");
+        el.querySelector(".asb-watch-toggle")?.setAttribute("aria-expanded", "false");
+        const actions = el.querySelector(".asb-watch-actions");
+        if (actions) actions.inert = true;
+      });
   }
   // Outside click closes card menus and collapses the watch pill. Clicks
   // inside the pill are handled by its own listeners (toggle semantics).
@@ -313,10 +365,14 @@
     closeMenu();
     const menu = document.createElement("div");
     menu.className = "asb-menu";
+    menu.setAttribute("role", "menu");
+    menuTrigger = container.querySelector(".asb-btn");
+    menuTrigger?.setAttribute("aria-expanded", "true");
 
     const addItem = (label, scope) => {
       const item = document.createElement("button");
       item.type = "button";
+      item.setAttribute("role", "menuitem");
       item.textContent = label;
       item.addEventListener(
         "click",
@@ -340,6 +396,7 @@
     menu.addEventListener("click", (e) => e.stopPropagation());
     container.appendChild(menu);
     openMenuEl = menu;
+    menu.querySelector("button")?.focus();
   }
 
   // -------------------------------------------------------------------------
@@ -358,7 +415,7 @@
       refreshSets(await ASB.getState());
       processAll();
       const n = saved.blockedCount;
-      showToast(`Blocked. You've hidden ${n} AI ${n === 1 ? "video" : "videos"} 🎉`);
+      showToast(`Blocked. You've hidden ${n} AI ${n === 1 ? "video" : "videos"} 🎉`, saved.undoToken);
     } catch {
       if (card) card.classList.remove("asb-hidden");
       showToast("Couldn't save this block. Please try again.");
@@ -398,20 +455,39 @@
   // -------------------------------------------------------------------------
 
   let toastTimer = null;
-  function showToast(message) {
+  function showToast(message, undoToken) {
     if (!document.body) return; // document_start — too early to render
     let toast = document.querySelector(".asb-toast");
     if (!toast) {
       toast = document.createElement("div");
       toast.className = "asb-toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
       document.body.appendChild(toast);
     }
     toast.textContent = message;
+    if (undoToken) {
+      const undo = document.createElement("button");
+      undo.type = "button";
+      undo.textContent = "Undo";
+      undo.addEventListener("click", async () => {
+        undo.disabled = true;
+        try {
+          const result = await api.runtime.sendMessage({ type: "asb-undo", token: undoToken });
+          if (!result?.ok) throw new Error(result?.error);
+          refreshSets(await ASB.getState());
+          enforcedVideoId = null;
+          processAll();
+          showToast("Block undone. Earlier reports are not retracted.");
+        } catch { showToast("Couldn't undo this block. Remove it in Settings."); }
+      });
+      toast.append(" ", undo);
+    }
     toast.classList.remove("asb-toast-show");
     void toast.offsetWidth; // restart the pop animation on rapid blocks
     toast.classList.add("asb-toast-show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove("asb-toast-show"), 2500);
+    toastTimer = setTimeout(() => toast.classList.remove("asb-toast-show"), undoToken ? 8000 : 3500);
   }
 
   // -------------------------------------------------------------------------
@@ -518,11 +594,14 @@
     const root = playbackRoot();
     const player = root?.querySelector("#movie_player, .html5-video-player");
     if (!player) return false;
-    if (overlayEl?.isConnected && player.contains(overlayEl)) return true;
+    const info = watchPageInfo();
+    const reason = blockReason(info)?.text || "This video is blocked.";
+    if (overlayEl?.isConnected && player.contains(overlayEl) && overlayEl.dataset.reason === reason) return true;
     clearWatchOverlay();
 
     overlayEl = document.createElement("div");
     overlayEl.className = "asb-player-overlay";
+    overlayEl.dataset.reason = reason;
     const emoji = document.createElement("div");
     emoji.className = "asb-overlay-emoji";
     emoji.textContent = "🤖🚫";
@@ -531,8 +610,36 @@
     title.textContent = "Blocked because of AI Slop";
     const sub = document.createElement("div");
     sub.className = "asb-overlay-sub";
-    sub.textContent = subText || "This video or its channel is on your block list.";
+    sub.textContent = subText ? `${reason} ${subText}` : reason;
     overlayEl.append(emoji, title, sub);
+    const controls = document.createElement("div");
+    controls.className = "asb-overlay-controls";
+    const action = (label, callback) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        button.disabled = true;
+        try {
+          await callback();
+          refreshSets(await ASB.getState());
+          enforcedVideoId = null;
+          processAll();
+          const video = playbackRoot()?.querySelector("video.html5-main-video");
+          if (video && !isBlocked(watchPageInfo())) video.play().catch(() => {});
+        } catch { button.disabled = false; showToast("Couldn't save your choice. Please try again."); }
+      });
+      controls.appendChild(button);
+    };
+    action("Watch once", async () => { watchOnceId = info.videoId; });
+    const allow = async (kind, id) => {
+      const result = await api.runtime.sendMessage({ type: "asb-allow", kind, id, name: info.channelName, allowed: true });
+      if (!result?.ok) throw new Error(result?.error);
+    };
+    action("Always allow video", () => allow("videos", info.videoId));
+    if (info.channelId) action("Always allow channel", () => allow("channels", info.channelId));
+    overlayEl.appendChild(controls);
     player.appendChild(overlayEl);
     return true;
   }
@@ -548,6 +655,7 @@
 
   function processAll() {
     if (!state.enabled) return;
+    if (watchOnceId && watchPageInfo().videoId !== watchOnceId) watchOnceId = null;
     try {
       document.querySelectorAll(CARD_SELECTORS).forEach((card) => {
         const info = extractInfo(card);
@@ -590,6 +698,7 @@
     });
     // SPA navigation: YouTube swaps content without a page load.
     window.addEventListener("yt-navigate-finish", () => {
+      watchOnceId = null;
       closeMenu();
       clearWatchOverlay();
       enforcedVideoId = null;

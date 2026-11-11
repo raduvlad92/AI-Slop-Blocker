@@ -1,4 +1,51 @@
-# Release checks — 0.1.2
+# Release checks — 0.2.0
+
+Verified locally on November 11, 2026. This implementation is prepared for
+commit/push and PR CI; these local checks do not establish store publication or
+live website compatibility.
+
+- **135/135 Node tests pass**, including SQLite backend regressions, import
+  isolation/invalid-file atomicity, concurrent mutations, out-of-order Undo,
+  canonical channel migration, exceptions, cached-list preservation and native
+  Firefox report-permission rejection/revocation checks.
+- **16/16 DOM regressions pass in each of Chromium and Firefox**. Actual Options
+  UI also renders, saves filter settings, and downloads a portable JSON backup
+  in both engines without enabling reporting or causing console errors.
+- Actual installed extensions in **Chromium, Firefox and native Zen 1.24.1b** pass
+  isolated local-fixture smoke checks: initialized local identity/default-off
+  consent, real runtime/storage message round trips, import/export, Undo,
+  native Firefox consent rejection, safe Google filtering, personal block
+  explanations, Watch once navigation expiry, and persistent local exceptions.
+  Synthetic smoke tests generated zero report submissions. Zen delays loading
+  inactive new tabs, so the smoke harness explicitly activates fixture tabs.
+- Mozilla `web-ext lint --warnings-as-errors` passes with **zero errors, notices
+  or warnings**. Firefox uses a module event page and minimum version 142;
+  Chrome keeps its module service worker. Both packages come from shared source.
+- Chrome/Firefox archives pass manifest/resource/policy-source equality and CRC
+  checks. Only the 19 extension files are included; backend, admin, test probes
+  and credentials are excluded. Packaging prints exact sizes and SHA-256 values
+  and creates adjacent checksum files under ignored `releases/`.
+- The actual Settings screenshot was regenerated from controlled fresh-install
+  state at 1280×800, with reporting off. It is a fixture screenshot.
+- PR CI now covers Node/backend tests, blocklist validation, both browser DOM
+  engines, packaging, Firefox lint and installed Chromium/Firefox checks. Native
+  Zen runs locally when its binary is available; CI does not claim Zen coverage.
+
+## Remaining release checks
+
+- Deploy the November 11 policy sources and verify the public policy matches
+  the packaged copy; this change does not deploy the backend.
+- Retest current live Google/YouTube/Shorts and Firefox/Zen's native optional
+  permission grant/rejection/revocation UI. Controlled fixtures are separate.
+- Complete Mozilla signing, signed-package installation/update/restart tests,
+  account/listing/declaration checks and store submission/publication.
+- Legacy personal video entries have no channel-action relationship metadata;
+  they remain separately removable rather than guessing which should be deleted.
+- Undo/removal cannot retract a report already sent. Imported backups do not
+  transfer identity, consent, statistics or community/Undo caches, and do not
+  replay reports. Public-list promotion remains a manually reviewed PR.
+
+## Historical 0.1.2 evidence
 
 ## Contributor moderation update
 
