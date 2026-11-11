@@ -2,7 +2,8 @@
 
 Release 0.2.0 implements the next browser/portability/recovery batch. Verification
 and remaining store/live-site gates are recorded in store/RELEASE-CHECKS.md.
-The 0.1.2 backend/migration evidence below is retained as historical context.
+Firefox v0.2.0 is submitted to Mozilla and awaiting review; public installation
+is not verified yet. The 0.1.2 backend/migration evidence below is historical.
 
 ## Release 0.2.0 implementation plan
 

@@ -2,7 +2,8 @@
 
 A free, local-first desktop extension for **Chrome, Firefox and Zen**. Version
 **0.2.0** adds Firefox/Zen support, portable backups, recovery controls and
-community exceptions. Store signing, submission and publication are still pending.
+community exceptions. Firefox 0.2.0 has been submitted to Mozilla and is awaiting review; public
+installation is not available yet. Chrome Web Store submission is still pending.
 
 - **Google Search:** hide positively identified English-labelled AI Overviews
   while keeping ordinary search results visible.

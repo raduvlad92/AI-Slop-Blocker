@@ -45,20 +45,20 @@ matched local/packaged SHA-256
 `495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`.
 `/health` returned 200; unauthenticated `/stats` and `/review` returned 401.
 
-The public Mozilla API returned 404 for GUID
-`ai-slop-blocker@deletecookies.dev`. The developer portal redirected to Mozilla
-sign-in behind a CAPTCHA. No local Mozilla credentials were configured; secure
-issuer/secret inputs timed out without values. No AMO upload, signature,
-submission or public listing was created. Prepared listing/reviewer metadata and
-the published privacy text are in `amo-metadata.json` and `amo-policy.json`.
+Mozilla accepted the listed 0.2.0 submission after secure authentication. Add-on
+3124801 (`ai-slop-blocker1`), version 6692417, file 5236506 and preview 447925
+are recorded in `AMO-SUBMISSION.json`. The policy, icon and screenshot/caption
+are attached, and both add-on and version are enabled. Mozilla reports
+**nominated / unreviewed**. The anonymous API returned 401 and the public page
+had no install link: approval/public signed installation remains unverified.
+No credentials are stored in Git.
 
 ## Remaining release checks
 
 - The November 11 policy is deployed as Worker version `5589efea-57fa-4080-898d-02cc15b680bb`; public/source/package SHA-256 matches `495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`. Health returns 200; anonymous admin routes return 401.
 - Retest current live Google/YouTube/Shorts and Firefox/Zen's native optional
   permission grant/rejection/revocation UI. Controlled fixtures are separate.
-- Complete Mozilla signing, signed-package installation/update/restart tests,
-  account/listing/declaration checks and store submission/publication.
+- Await Mozilla review/public signed download; verify signed-package installation/update/restart and public installability. The listed submission and its policy/assets are complete; Chrome store submission remains separate.
 - Legacy personal video entries have no channel-action relationship metadata;
   they remain separately removable rather than guessing which should be deleted.
 - Undo/removal cannot retract a report already sent. Imported backups do not

@@ -1,0 +1,29 @@
+{
+  "verifiedAt": "2026-11-11T02:43:28.712507+00:00",
+  "addonId": 3124801,
+  "guid": "ai-slop-blocker@deletecookies.dev",
+  "slug": "ai-slop-blocker1",
+  "version": "0.2.0",
+  "versionId": 6692417,
+  "fileId": 5236506,
+  "distribution": "listed",
+  "desktopOnly": true,
+  "experimental": true,
+  "addonStatus": "nominated",
+  "versionFileStatus": "unreviewed",
+  "addonDisabled": false,
+  "versionDisabled": false,
+  "listingUrl": "https://addons.mozilla.org/en-US/firefox/addon/ai-slop-blocker1/",
+  "developerVersionUrl": "https://addons.mozilla.org/en-US/developers/addon/ai-slop-blocker1/versions/6692417",
+  "publicInstallVerified": false,
+  "publicApiStatus": 401,
+  "publicInstallLinkPresent": false,
+  "privacyPolicyAttached": true,
+  "iconAttached": true,
+  "previewIds": [
+    447925
+  ],
+  "uploadedArchiveSha256": "54348a05c1e97093b56c64509205fbd56eb6861c79952a71c58a286e9dd0cce2",
+  "amoStoredFileSha256": "4f9cf5a4eaf92982c7495dd0cb23fa3965426702361a2b03c8af29c3c0dbea3f",
+  "remainingGate": "Mozilla review and public signed-download availability; then signed-package install/update/restart checks."
+}

@@ -8,8 +8,8 @@ an ES-module background event page and the stable add-on ID
 For temporary testing, load `releases/firefox/manifest.json` through
 `about:debugging#/runtime/this-firefox` in either browser. Temporary installs end
 at restart. Normal Firefox release/beta installation requires Mozilla signing,
-even for unlisted/self-distributed packages. No signing or AMO submission has
-been performed by this change.
+even for unlisted/self-distributed packages. Firefox version 0.2.0 is submitted to AMO and awaiting Mozilla review.
+No public signed installation has been verified yet.
 
 The generated manifest declares no mandatory report-data collection and declares
 optional `browsingActivity`, `websiteContent`, `websiteActivity`, and
@@ -38,32 +38,37 @@ Official references: [background environments](https://developer.mozilla.org/en-
 [signing/distribution](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/),
 [Zen extensions](https://docs.zen-browser.app/user-manual/extensions).
 
-## Listed submission prepared November 11
+## Listed submission — November 11
 
-The user has authorized public Firefox marketplace publication. CI for PR #1 is
-successful, the exact unsigned Firefox package passes Mozilla lint, and the
-updated public privacy policy is deployed and byte-identical to the package.
-The public AMO lookup for `ai-slop-blocker@deletecookies.dev` currently returns
-404. No upload, signing, submission or public availability is claimed.
+Mozilla accepted the secure API credentials and the listed 0.2.0 submission:
 
-The developer dashboard requires Mozilla sign-in behind a CAPTCHA; no Mozilla
-API issuer/secret is configured locally. Secure credential inputs are required
-for official API submission. Do not put signing credentials in Git or chat.
+- Add-on **3124801**, GUID `ai-slop-blocker@deletecookies.dev`.
+- Version **6692417**, file **5236506**, preview **447925**.
+- Add-on status **nominated**; version file status **unreviewed**.
+- Add-on and version are enabled; the release is marked experimental.
+- The privacy policy, icon and Settings screenshot/caption are attached.
+- [Developer version](https://addons.mozilla.org/en-US/developers/addon/ai-slop-blocker1/versions/6692417).
+- [Intended public listing](https://addons.mozilla.org/en-US/firefox/addon/ai-slop-blocker1/).
 
-`amo-metadata.json` prepares a **listed**, desktop-Firefox submission. It starts
-with `is_disabled: true` so policy/icon/preview metadata can be completed before
-publishing is enabled. The initial release is marked experimental. The draft
-uses Mozilla's `all-rights-reserved` choice because the repository has no
-open-source license grant; this preserves existing rights rather than choosing
-a new open-source license. `amo-policy.json` holds the actual published policy.
-Use `extension/icons/icon-128.png` and the actual Settings screenshot for assets.
+Anonymous verification currently returns API 401 and a public page with no
+install link. This is an accepted submission awaiting Mozilla review, **not
+verified marketplace availability**. Do not re-upload 0.2.0; retain the existing
+version/upload identity. After approval, verify the anonymous listing and signed
+download, then complete signed-package installation/update/restart checks.
+Machine-readable evidence is in `AMO-SUBMISSION.json`. Credentials were used only
+inside a temporary local publisher process and were never added to Git.
 
-After authentication, submit with `web-ext sign --channel listed` and the prepared
-metadata, set the policy through the documented `eula_policy` API, attach the
-icon/preview, then enable listing publication. Check the actual version's file
-status and anonymous marketplace install link; an upload or pending review is
-not proof of public availability. Preserve the upload UUID if submission status
-is ambiguous rather than blindly re-uploading.
+The November 11 public policy is deployed and byte-identical to the package.
+`amo-policy.json` contains the policy text attached to AMO. `amo-metadata.json`
+is the initial-create template; its disabled flag is a staging safeguard, not
+the current AMO state. Initial creation disabled the version as well as the
+add-on; both were explicitly enabled after the policy and assets were attached.
+For future releases, inspect the existing add-on/version state before applying
+metadata. Do not use the initial-create payload blindly against a live listing.
+
+The license is Mozilla's `all-rights-reserved` choice because the repository has
+no open-source license grant. This preserves existing rights rather than
+choosing a new open-source license.
 
 API references: [listed add-on creation](https://mozilla.github.io/addons-server/topics/api/addons.html#create),
 [version license/compatibility](https://mozilla.github.io/addons-server/topics/api/addons.html#version-create),
