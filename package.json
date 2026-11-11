@@ -6,7 +6,16 @@
     "test:browser": "node tests/browser/serve.mjs",
     "validate": "node .github/validate-blocklist.js",
     "review:admin": "node scripts/review-admin.mjs",
-    "package": "python3 scripts/package-release.py"
+    "package": "python3 scripts/package-release.py",
+    "test:browser:ci": "node tests/browser/run.mjs",
+    "test:extension": "node tests/extension/run.mjs",
+    "lint:firefox": "web-ext lint --source-dir releases/firefox --warnings-as-errors"
   },
-  "engines": { "node": ">=22.13.0" }
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0",
+    "web-ext": "10.8.0"
+  }
 }

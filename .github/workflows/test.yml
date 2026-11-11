@@ -1,0 +1,32 @@
+name: Extension and backend checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run validate
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm run test:browser:ci
+      - run: npm run package
+      - run: npm run lint:firefox
+      - run: npm run test:extension

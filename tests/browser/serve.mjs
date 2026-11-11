@@ -33,4 +33,4 @@ const server = createServer(async (request, response) => {
     response.end(data);
   } catch { response.writeHead(404).end(); }
 });
-server.listen(port, "127.0.0.1", () => console.log(`Browser regressions: http://127.0.0.1:${port}/ (all reports and channel requests mocked)`));
+server.listen(port, "127.0.0.1", () => console.log(`Browser regressions: http://127.0.0.1:${server.address().port}/ (all reports and channel requests mocked)`));

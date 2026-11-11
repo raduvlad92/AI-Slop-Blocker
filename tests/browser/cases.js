@@ -66,6 +66,7 @@
     doc.body.innerHTML = html;
     let pauses = 0;
     win.HTMLMediaElement.prototype.pause = function () { pauses++; };
+    win.HTMLMediaElement.prototype.play = async function () {};
     const style = doc.createElement("style");
     style.textContent = sources["content/youtube.css"];
     doc.head.appendChild(style);
@@ -83,6 +84,53 @@
   const watch = (owner = "@example") => `<ytd-watch-metadata><div id="owner"><ytd-channel-name><a href="/${owner.startsWith("UC") ? "channel/" : ""}${owner}">Example</a></ytd-channel-name></div></ytd-watch-metadata>`;
   const short = (id = video, owner = "@example", active = true) => `<ytd-reel-video-renderer video-id="${id}" ${active ? "is-active" : ""}>${player}<ytd-reel-player-header-renderer><a href="/${owner.startsWith("UC") ? "channel/" : ""}${owner}">Example</a></ytd-reel-player-header-renderer></ytd-reel-video-renderer>`;
   const tests = [
+    ["Undo restores a just-blocked card and its counters", async () => {
+      const f = await fixture("/results", card());
+      try {
+        f.doc.querySelector(".asb-btn").click(); f.doc.querySelector(".asb-menu button").click(); await wait();
+        f.doc.querySelector(".asb-toast button").click(); await wait();
+        assert(!f.state.personal.videos[video], "Undo left personal block");
+        assert(!f.doc.querySelector("#card").classList.contains("asb-hidden"), "Undo did not restore card");
+        assert(f.state.blockedCount === 0, "Undo did not restore counter");
+      } finally { f.dispose(); }
+    }],
+    ["Community explanation, Watch once and navigation guard", async () => {
+      const f = await fixture(`/watch?v=${video}`, player + watch(), {
+        community: { videos: [video, other], channels: [], syncedAt: 1, metadata: { videos: { [video]: { reason: "Reviewed synthetic narration" } } } },
+      });
+      try {
+        assert(f.doc.querySelector(".asb-overlay-sub").textContent.includes("Community video block: Reviewed synthetic narration"), "block reason missing");
+        f.doc.querySelector(".asb-overlay-controls button").click(); await wait();
+        assert(!f.doc.querySelector(".asb-player-overlay"), "Watch once left overlay");
+        const before = f.pauses(); f.doc.querySelector("video").dispatchEvent(new f.win.Event("play"));
+        assert(f.pauses() === before, "Watch once playback still guarded");
+        f.win.history.replaceState({}, "", `/watch?v=${other}`); f.win.dispatchEvent(new f.win.Event("yt-navigate-finish")); await wait();
+        assert(f.doc.querySelector(".asb-player-overlay"), "Watch once leaked to next video");
+        assert(!f.state.allowlist, "Watch once persisted an exception");
+      } finally { f.dispose(); }
+    }],
+    ["Always allow overrides a community channel across future visits", async () => {
+      const f = await fixture(`/watch?v=${video}`, player + watch(), { community: { videos: [], channels: ["@example"], syncedAt: 1 } });
+      try {
+        f.doc.querySelectorAll(".asb-overlay-controls button")[2].click(); await wait();
+        assert(f.state.allowlist.channels["@example"], "channel exception not saved");
+        assert(!f.doc.querySelector(".asb-player-overlay"), "allowed channel still overlaid");
+        f.win.history.replaceState({}, "", `/watch?v=${other}`); f.win.dispatchEvent(new f.win.Event("yt-navigate-finish")); await wait();
+        assert(!f.doc.querySelector(".asb-player-overlay"), "exception lost on navigation");
+        assert(f.reports.length === 0, "allow action submitted a report");
+      } finally { f.dispose(); }
+    }],
+    ["Keyboard menu opens, navigates and closes with focus restored", async () => {
+      const f = await fixture("/results", card());
+      try {
+        const toggle = f.doc.querySelector(".asb-btn"); toggle.click();
+        assert(f.doc.activeElement === f.doc.querySelector(".asb-menu button"), "menu did not receive focus");
+        f.doc.dispatchEvent(new f.win.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+        assert(f.doc.activeElement === f.doc.querySelectorAll(".asb-menu button")[1], "arrow navigation failed");
+        f.doc.dispatchEvent(new f.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        assert(!f.doc.querySelector(".asb-menu") && f.doc.activeElement === toggle, "Escape did not restore focus");
+      } finally { f.dispose(); }
+    }],
     ["Thumbnail video action saves exactly once and closes its menu", async () => {
       const f = await fixture("/results", card());
       try {

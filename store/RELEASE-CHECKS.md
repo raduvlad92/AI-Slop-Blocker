@@ -1,4 +1,71 @@
-# Release checks — 0.1.2
+# Release checks — 0.2.0
+
+Verified locally on November 11, 2026. This implementation is prepared for
+commit/push and PR CI; these local checks do not establish store publication or
+live website compatibility.
+
+- **135/135 Node tests pass**, including SQLite backend regressions, import
+  isolation/invalid-file atomicity, concurrent mutations, out-of-order Undo,
+  canonical channel migration, exceptions, cached-list preservation and native
+  Firefox report-permission rejection/revocation checks.
+- **16/16 DOM regressions pass in each of Chromium and Firefox**. Actual Options
+  UI also renders, saves filter settings, and downloads a portable JSON backup
+  in both engines without enabling reporting or causing console errors.
+- Actual installed extensions in **Chromium, Firefox and native Zen 1.24.1b** pass
+  isolated local-fixture smoke checks: initialized local identity/default-off
+  consent, real runtime/storage message round trips, import/export, Undo,
+  native Firefox consent rejection, safe Google filtering, personal block
+  explanations, Watch once navigation expiry, and persistent local exceptions.
+  Synthetic smoke tests generated zero report submissions. Zen delays loading
+  inactive new tabs, so the smoke harness explicitly activates fixture tabs.
+- Mozilla `web-ext lint --warnings-as-errors` passes with **zero errors, notices
+  or warnings**. Firefox uses a module event page and minimum version 142;
+  Chrome keeps its module service worker. Both packages come from shared source.
+- Chrome/Firefox archives pass manifest/resource/policy-source equality and CRC
+  checks. Only the 19 extension files are included; backend, admin, test probes
+  and credentials are excluded. Packaging prints exact sizes and SHA-256 values
+  and creates adjacent checksum files under ignored `releases/`.
+- The actual Settings screenshot was regenerated from controlled fresh-install
+  state at 1280×800, with reporting off. It is a fixture screenshot.
+- PR CI now covers Node/backend tests, blocklist validation, both browser DOM
+  engines, packaging, Firefox lint and installed Chromium/Firefox checks. Native
+  Zen runs locally when its binary is available; CI does not claim Zen coverage.
+
+## Marketplace preparation — November 11
+
+User authorized public Firefox marketplace publication. GitHub CI for
+`e74edf4` passed: [run 42944269833](https://github.com/raduvlad92/AI-Slop-Blocker/actions/runs/42944269833).
+The exact unsigned Firefox ZIP remains 53,792 bytes / 19 files, SHA-256
+`54348a05c1e97093b56c64509205fbd56eb6861c79952a71c58a286e9dd0cce2`;
+CRC and policy-source equality pass, with zero-warning Mozilla lint.
+
+Policy deployment succeeded as Worker version
+`5589efea-57fa-4080-898d-02cc15b680bb`. Public `/privacy` returned 200 and
+matched local/packaged SHA-256
+`495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`.
+`/health` returned 200; unauthenticated `/stats` and `/review` returned 401.
+
+Mozilla accepted the listed 0.2.0 submission after secure authentication. Add-on
+3124801 (`ai-slop-blocker1`), version 6692417, file 5236506 and preview 447925
+are recorded in `AMO-SUBMISSION.json`. The policy, icon and screenshot/caption
+are attached, and both add-on and version are enabled. Mozilla reports
+**nominated / unreviewed**. The anonymous API returned 401 and the public page
+had no install link: approval/public signed installation remains unverified.
+No credentials are stored in Git.
+
+## Remaining release checks
+
+- The November 11 policy is deployed as Worker version `5589efea-57fa-4080-898d-02cc15b680bb`; public/source/package SHA-256 matches `495bc66b3d772c8edf55665f5e38164311ce98c3d7c1bc081ef5926e37f7ddfe`. Health returns 200; anonymous admin routes return 401.
+- Retest current live Google/YouTube/Shorts and Firefox/Zen's native optional
+  permission grant/rejection/revocation UI. Controlled fixtures are separate.
+- Await Mozilla review/public signed download; verify signed-package installation/update/restart and public installability. The listed submission and its policy/assets are complete; Chrome store submission remains separate.
+- Legacy personal video entries have no channel-action relationship metadata;
+  they remain separately removable rather than guessing which should be deleted.
+- Undo/removal cannot retract a report already sent. Imported backups do not
+  transfer identity, consent, statistics or community/Undo caches, and do not
+  replay reports. Public-list promotion remains a manually reviewed PR.
+
+## Historical 0.1.2 evidence
 
 ## Contributor moderation update
 

@@ -21,6 +21,7 @@ function harness(initial = {}, extraGlobals = {}) {
   const chrome = {
     runtime: {
       id: "asb-test-extension",
+      getURL: (path) => `chrome-extension://asb-test-extension/${path}`,
       onInstalled: noOpEvent,
       onStartup: noOpEvent,
       onMessage: { addListener(callback) { listener = callback; } },
@@ -53,7 +54,7 @@ function harness(initial = {}, extraGlobals = {}) {
     action: { async setBadgeBackgroundColor() {}, async setBadgeText() {} },
   };
   vm.runInNewContext(backgroundSource, {
-    chrome, console, setTimeout, crypto,
+    chrome, console, setTimeout, crypto, TextEncoder,
     ASBChannels: identityContext.ASBChannels,
     BACKEND_URL: "https://example.invalid",
     BLOCKLIST_VIDEOS_URL: "https://example.invalid/videos",
@@ -132,7 +133,7 @@ test("options removal and a simultaneous block do not resurrect or drop unrelate
   assert.equal(app.state.events.length, 2);
 });
 
-test("channel blocking still adds the current video and channel removal leaves it blocked", async () => {
+test("removing a channel also removes the companion video created by that block", async () => {
   const app = harness();
   const response = await app.send(blockMessage(0, { scope: "channel" }));
   assert.equal(response.ok, true);
@@ -141,7 +142,7 @@ test("channel blocking still adds the current video and channel removal leaves i
   assert.equal(response.events.length, 1);
   await app.send({ type: "asb-remove-block", storageKey: "channels", id: "@example" });
   assert.deepEqual(app.state.personal.channels, {});
-  assert.ok(app.state.personal.videos[videoId(0)]);
+  assert.equal(app.state.personal.videos[videoId(0)], undefined);
   assert.equal(app.state.blockedCount, 1);
 });
 
@@ -236,4 +237,160 @@ test("community sync retains canonical bindings and drops them when an entry is 
   channels = [{ id: "@old" }];
   await app.send({ type: "asb-sync-now" });
   assert.deepEqual(app.state.community.channels, ["@old"]);
+});
+
+const settingsSender = { id: 'asb-test-extension', url: 'chrome-extension://asb-test-extension/options/options.html' };
+const backup = (personal = { videos: {}, channels: {} }, extra = {}) => JSON.stringify({
+  format: 'ai-slop-blocker', version: 1, personal, settings: { hideYouTube: true }, ...extra,
+});
+
+test('export includes only portable data and strips action and installation identities', async () => {
+  const app = harness({ installId: 'private-identity', reportingConsent: { enabled: true }, events: [{ kind: 'video' }],
+    personal: { videos: { [videoId(0)]: { channelName: 'Creator', actionId: 'local-action', addedAt: 1 } }, channels: {} } });
+  const result = await app.send({ type: 'asb-export' }, settingsSender);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.personal.videos[videoId(0)].channelName, 'Creator');
+  const text = JSON.stringify(result.data);
+  for (const forbidden of ['private-identity', 'reportingConsent', 'events', 'local-action', 'undoBlocks']) assert.ok(!text.includes(forbidden));
+  assert.equal(app.reports.length, 0);
+});
+
+test('import merges safely, retains local identity and consent, and never submits reports', async () => {
+  const app = harness({ installId: 'local-identity', reportingConsent: { enabled: true, updatedAt: 1 }, blockedCount: 4,
+    personal: { videos: { [videoId(0)]: { channelName: 'Keep me' } }, channels: {} } });
+  const text = backup({ videos: { [videoId(0)]: { channelName: 'Overwrite' }, [videoId(1)]: { channelName: 'Imported' } }, channels: {} },
+    { installId: 'foreign-identity', reportingConsent: { enabled: false }, blockedCount: 1000 });
+  const results = await Promise.all([
+    app.send({ type: 'asb-import', text }, settingsSender),
+    app.send(blockMessage(2)),
+  ]);
+  assert.ok(results.every((result) => result.ok));
+  assert.equal(app.state.personal.videos[videoId(0)].channelName, 'Keep me');
+  assert.equal(Object.keys(app.state.personal.videos).length, 3);
+  assert.equal(app.state.installId, 'local-identity');
+  assert.equal(app.state.reportingConsent.enabled, true);
+  assert.equal(app.state.blockedCount, 5);
+  await tick();
+  assert.equal(app.reports.length, 1, 'only the new explicit block reports');
+});
+
+test('invalid and oversized imports leave all state untouched', async () => {
+  for (const text of ['not-json', '{}', backup({ videos: { invalid: {} }, channels: {} }),
+    backup(undefined, { settings: { hideYouTube: 'false' } }), ' '.repeat(2 * 1024 * 1024 + 1),
+    backup(undefined, { version: 999 })]) {
+    const app = harness({ installId: 'unchanged' });
+    const response = await app.send({ type: 'asb-import', text }, settingsSender);
+    assert.equal(response.ok, false);
+    assert.deepEqual(app.state, { installId: 'unchanged' });
+  }
+});
+
+test('content scripts cannot import, export or change settings', async () => {
+  const app = harness();
+  for (const type of ['asb-import', 'asb-export', 'asb-settings']) {
+    const result = await app.send({ type, text: backup(), settings: { hideYouTube: false } },
+      { id: settingsSender.id, url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA' });
+    assert.equal(result.ok, false);
+  }
+  assert.deepEqual(app.state, {});
+});
+
+test('Undo restores replaced data and preserves a later block of the same video', async () => {
+  const app = harness({ personal: { videos: { [videoId(0)]: { channelName: 'Original' } }, channels: {} } });
+  const first = await app.send(blockMessage(0));
+  const second = await app.send(blockMessage(0, { info: { ...blockMessage(0).info, channelName: 'Latest' } }));
+  assert.equal((await app.send({ type: 'asb-undo', token: first.undoToken })).ok, true);
+  assert.equal(app.state.personal.videos[videoId(0)].channelName, 'Latest');
+  assert.equal(app.state.blockedCount, 1);
+  assert.equal((await app.send({ type: 'asb-undo', token: second.undoToken })).ok, true);
+  assert.equal(app.state.blockedCount, 0);
+  assert.equal(app.state.personal.videos[videoId(0)].channelName, 'Original');
+  assert.equal(app.state.events.length, 0);
+  assert.equal((await app.send({ type: 'asb-undo', token: second.undoToken })).ok, false);
+});
+
+test('Undo does not resurrect a block that was removed after the action', async () => {
+  const app = harness();
+  const first = await app.send(blockMessage(0));
+  await app.send({ type: 'asb-remove-block', storageKey: 'videos', id: videoId(0) });
+  await app.send({ type: 'asb-undo', token: first.undoToken });
+  assert.equal(app.state.personal.videos[videoId(0)], undefined);
+});
+
+test('channel removal preserves a video independently blocked before or after the channel action', async () => {
+  const app = harness();
+  await app.send(blockMessage(0));
+  await app.send(blockMessage(0, { scope: 'channel' }));
+  await app.send({ type: 'asb-remove-block', storageKey: 'channels', id: '@example' });
+  assert.ok(app.state.personal.videos[videoId(0)]);
+  await app.send(blockMessage(1, { scope: 'channel' }));
+  await app.send(blockMessage(1));
+  await app.send({ type: 'asb-remove-block', storageKey: 'channels', id: '@example' });
+  assert.ok(app.state.personal.videos[videoId(1)]);
+});
+
+test('always allow removes the corresponding personal block and explicit blocking clears that exception', async () => {
+  const app = harness();
+  await app.send(blockMessage(0, { scope: 'channel' }));
+  assert.equal((await app.send({ type: 'asb-allow', kind: 'channels', id: '@example', allowed: true })).ok, true);
+  assert.equal(app.state.personal.channels['@example'], undefined);
+  assert.equal(app.state.personal.videos[videoId(0)], undefined);
+  assert.ok(app.state.allowlist.channels['@example']);
+  await app.send(blockMessage(1));
+  assert.equal(app.state.allowlist.channels['@example'], undefined);
+});
+
+test('failed community sync preserves cache and records a readable error, next success clears it', async () => {
+  let failed = true;
+  const original = { videos: [videoId(0)], channels: [], syncedAt: 123 };
+  const app = harness({ community: original }, { async fetch() {
+    return { ok: !failed, status: 503, json: async () => [] };
+  } });
+  assert.equal((await app.send({ type: 'asb-sync-now' })).ok, false);
+  assert.deepEqual(app.state.community, original);
+  assert.ok(app.state.communitySync.error);
+  failed = false;
+  assert.equal((await app.send({ type: 'asb-sync-now' })).ok, true);
+  assert.equal(app.state.communitySync.error, null);
+  assert.deepEqual(app.state.community.videos, []);
+});
+
+test('malformed community data cannot overwrite a valid cache', async () => {
+  const app = harness({ community: { videos: [videoId(0)], channels: [], syncedAt: 1 } }, {
+    async fetch() { return { ok: true, json: async () => [{ id: 'bad-id' }] }; },
+  });
+  assert.equal((await app.send({ type: 'asb-sync-now' })).ok, false);
+  assert.deepEqual(app.state.community.videos, [videoId(0)]);
+});
+
+test('Undo restores an exception displaced by explicit blocking', async () => {
+  const app = harness({ allowlist: { videos: { [videoId(0)]: { name: 'Allowed before' } }, channels: {} } });
+  const blocked = await app.send(blockMessage(0));
+  assert.equal(app.state.allowlist.videos[videoId(0)], undefined);
+  await app.send({ type: 'asb-undo', token: blocked.undoToken });
+  assert.equal(app.state.allowlist.videos[videoId(0)].name, 'Allowed before');
+});
+
+test('Undo and channel removal keep working after a handle becomes a canonical channel ID', async () => {
+  for (const operation of ['undo', 'remove']) {
+    const app = harness();
+    const blocked = await app.send(blockMessage(0, { scope: 'channel' }));
+    const canonical = 'UCabcdefghijklmnopqrstuv';
+    app.state.channelAliases = { '@example': canonical };
+    app.state.personal.channels[canonical] = app.state.personal.channels['@example'];
+    delete app.state.personal.channels['@example'];
+    const result = await app.send(operation === 'undo' ? { type: 'asb-undo', token: blocked.undoToken }
+      : { type: 'asb-remove-block', storageKey: 'channels', id: canonical });
+    assert.equal(result.ok, true);
+    assert.deepEqual(app.state.personal, { videos: {}, channels: {} });
+  }
+});
+
+test('Undo cannot restore a broad exception over a newer explicit block', async () => {
+  const app = harness({ allowlist: { videos: {}, channels: { '@example': { name: 'Allowed' } } } });
+  const first = await app.send(blockMessage(0));
+  await app.send(blockMessage(1));
+  await app.send({ type: 'asb-undo', token: first.undoToken });
+  assert.ok(app.state.personal.videos[videoId(1)]);
+  assert.equal(app.state.allowlist.channels['@example'], undefined);
 });

@@ -1,6 +1,6 @@
 # Chrome Web Store listing draft
 
-These fields describe verified ZIP 0.1.2: tests, production contributor migration/moderation, updated policy equality, regenerated Settings screenshot, real private admin view, and updated GitHub review run/output passed verification. The user's unpacked Chrome 0.1.2 retest, developer-account/dashboard checks, upload and publication remain pending.
+Draft for Chrome package 0.2.0. Automated and installed-extension fixture checks are recorded in RELEASE-CHECKS.md. Live website retests, owner dashboard checks, upload and publication remain pending.
 
 ## Name
 
@@ -19,7 +19,8 @@ AI Slop Blocker hides Google's AI Overview answer boxes and gives you manual con
 - Google Search: hide positively identified, English-labelled AI Overview answer boxes. Ordinary search results stay visible.
 - YouTube: use the AI Slop button on watch pages and Shorts to block a video or its channel. An optional thumbnail button makes blocking available directly from supported feeds, searches, and recommendations.
 - Playback controls: choose a blocked overlay, redirect to the YouTube homepage, skip to the next video, or play a sidebar recommendation.
-- Personal lists: manage blocked videos and channels in Settings. Your choices are stored on this device.
+- Personal lists: search/manage blocked videos and channels, and export/import backups of blocks, exceptions and settings. Your choices are stored on this device.
+- Recovery: Undo a recent block, Watch once, or Always allow a video/channel, including community matches. Blocked players explain which list matched.
 - Community lists: public lists are reviewed by a human and synced periodically. Reports never automatically become community blocks. The community lists are currently empty; your personal blocks and Google filtering work independently.
 
 Local-first, with optional community reports
@@ -38,7 +39,7 @@ Installation/country metrics are supplied by the Chrome Web Store if the extensi
 
 Compatibility and limits
 
-For desktop Chrome. Google AI Overview detection currently supports English labels. Google and YouTube can change their page layouts, which can affect filtering. There is no automatic AI classification of ordinary content. Channel blocks can also retain the video from which you made the block; remove both entries in Settings to restore it. Time-saved statistics are estimates.
+For desktop Chrome. Google AI Overview detection currently supports English labels. Google and YouTube can change their page layouts, which can affect filtering. There is no automatic AI classification of ordinary content. Removing a new channel block also removes the companion videos it created, preserving independent video blocks. Older video entries may need separate removal. Time-saved statistics are estimates.
 
 Privacy policy: https://aislopblocker-api.radu-vlad-92.workers.dev/privacy
 
@@ -48,7 +49,7 @@ Source and community-list review: https://github.com/raduvlad92/AI-Slop-Blocker
 
 ## Public links and contact
 
-- Privacy policy: `https://aislopblocker-api.radu-vlad-92.workers.dev/privacy` — October 14 update live and byte-identical to both local copies.
+- Privacy policy: `https://aislopblocker-api.radu-vlad-92.workers.dev/privacy` — November 11 policy is deployed and byte-identical to the packaged copy.
 - Support email: `contact@deletecookies.dev`.
 - Homepage/source: `https://github.com/raduvlad92/AI-Slop-Blocker`.
 - Support/issues: `https://github.com/raduvlad92/AI-Slop-Blocker/issues`.

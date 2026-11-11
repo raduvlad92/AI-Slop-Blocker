@@ -159,7 +159,15 @@ a:hover > .asb-btn,
 .asb-overlay-sub {
   font: 400 13px/1.4 "Roboto", "Arial", sans-serif;
   color: #9aa1a9;
+  max-width: 90%;
 }
+.asb-overlay-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.asb-overlay-controls button, .asb-toast button {
+  border: 1px solid #737c89; border-radius: 6px; padding: 7px 10px;
+  color: #fff; background: #242a33; font: inherit; cursor: pointer;
+}
+.asb-watch button:focus-visible, .asb-btn:focus-visible, .asb-menu button:focus-visible,
+.asb-overlay-controls button:focus-visible, .asb-toast button:focus-visible { outline: 3px solid #38bdf8; outline-offset: -3px; }
 
 /* Toast: bottom-center, small pop, auto-dismisses. */
 .asb-toast {
@@ -181,4 +189,10 @@ a:hover > .asb-btn,
 .asb-toast-show {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(1);
+  pointer-events: auto;
+}
+.asb-toast { max-width: calc(100vw - 32px); width: max-content; white-space: normal; }
+@media (prefers-reduced-motion: reduce) {
+  .asb-watch { animation: none; }
+  .asb-watch-actions, .asb-toast { transition: none; }
 }

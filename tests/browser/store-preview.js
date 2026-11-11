@@ -24,6 +24,14 @@
     } },
     runtime: {
       async sendMessage(message) {
+        if (message.type === "asb-settings") {
+          await set({ settings: { ...state.settings, ...message.settings } });
+          return { ok: true };
+        }
+        if (message.type === "asb-export") {
+          return { ok: true, data: { format: "ai-slop-blocker", version: 1, personal: state.personal,
+            allowlist: { videos: {}, channels: {} }, settings: state.settings } };
+        }
         if (message.type === "asb-set-reporting") {
           await set({ reportingConsent: { enabled: message.enabled, updatedAt: Date.now() } });
           return { ok: true };

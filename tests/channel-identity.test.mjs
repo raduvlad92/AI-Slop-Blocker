@@ -230,3 +230,17 @@ test("migration merges case/encoded aliases and preserves an existing canonical 
   assert.deepEqual(f.requests, ["https://www.youtube.com/@caf%C3%A9"]);
   assert.deepEqual(f.state().personal.channels, { [ID]: existing, [OTHER_ID]: { name: "Other" } });
 });
+
+test('channel resolution anchors allow exceptions and retains community review reasons', async () => {
+  const f = fixture({ allowlist: { videos: {}, channels: { '@creator': { name: 'Allowed creator' } } },
+    community: { channels: ['@creator'], metadata: { channels: { '@creator': { reason: 'Reviewed reason' } } } } });
+  await f.resolve(['@creator']);
+  assert.deepEqual(f.state().allowlist.channels, { [ID]: { name: 'Allowed creator' } });
+  assert.equal(f.state().community.metadata.channels[ID].reason, 'Reviewed reason');
+});
+
+test('an allowed creator can refresh its identity without resolving unrelated channels', async () => {
+  const f = fixture({ allowlist: { channels: { [ID]: {} } } });
+  await f.resolve([ID, OTHER_ID]);
+  assert.deepEqual(f.requests, [`https://www.youtube.com/channel/${ID}`]);
+});

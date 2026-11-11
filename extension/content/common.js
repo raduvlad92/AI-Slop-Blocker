@@ -1,3 +1,5 @@
+const api = typeof browser === "undefined" ? chrome : browser;
+
 // Shared helpers for content scripts (classic script — content scripts can't
 // use ES modules, so this defines a single global namespace).
 
@@ -18,6 +20,8 @@ const ASB = {
     channelAliases: {},
     reportingConsent: { enabled: false, updatedAt: 0 },
     community: { videos: [], channels: [], syncedAt: 0 },
+    allowlist: { videos: {}, channels: {} },
+    communitySync: { attemptedAt: 0, error: null },
     blockedCount: 0,
     // Event log powering the icon badge and the stats views:
     // { t: epoch-ms, kind: "video" | "overview", mins?: number }
@@ -27,7 +31,7 @@ const ASB = {
   // The background worker owns mutations so multiple tabs cannot overwrite
   // one another's blocks or stats. A block includes its stats event.
   async block(scope, info, mins) {
-    const response = await chrome.runtime.sendMessage({ type: "asb-block", scope, info, mins });
+    const response = await api.runtime.sendMessage({ type: "asb-block", scope, info, mins });
     if (!response?.ok) throw new Error(response?.error || "Could not save block");
     return response;
   },
@@ -36,18 +40,18 @@ const ASB = {
   // serialization happen in the background worker.
   async logEvent(kind, mins) {
     try {
-      await chrome.runtime.sendMessage({ type: "asb-log-event", kind, mins });
+      await api.runtime.sendMessage({ type: "asb-log-event", kind, mins });
     } catch { /* stats are best-effort, never break blocking */ }
   },
 
   async getState() {
-    return chrome.storage.local.get(ASB.DEFAULTS);
+    return api.storage.local.get(ASB.DEFAULTS);
   },
 
   // Calls cb(changes) whenever any of our storage keys change (settings
   // toggled in options, list edited, community sync, another tab blocking).
   onStateChange(cb) {
-    chrome.storage.local.onChanged.addListener((changes) => {
+    api.storage.local.onChanged.addListener((changes) => {
       const keys = Object.keys(ASB.DEFAULTS);
       if (keys.some((k) => k in changes)) cb(changes);
     });

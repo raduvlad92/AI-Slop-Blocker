@@ -1,0 +1,37 @@
+{
+  "name": {
+    "en-US": "AI Slop Blocker"
+  },
+  "summary": {
+    "en-US": "Hide English Google AI Overviews and manually block YouTube videos, Shorts and channels. Local-first, with Undo and exceptions."
+  },
+  "description": {
+    "en-US": "Choose what stays in your Google Search results and YouTube feed.\n\nAI Slop Blocker hides positively identified English-labelled Google AI Overview answer boxes while preserving ordinary results. On YouTube, manually block videos or channels from watch pages and Shorts. Optional thumbnail buttons work on supported feeds, searches and recommendations.\n\nYou choose what counts as slop: there is no automatic AI detector or classification of ordinary content.\n\n- Undo recent blocks, Watch once, or Always allow a video/channel.\n- See whether a block comes from your personal list or the human-reviewed community list.\n- Choose a blocked overlay, redirect home, next video, or sidebar recommendation.\n- Search your lists and export/import personal blocks, exceptions and settings.\n- Inspect community sync failures and overdue updates; failed downloads preserve your previous cache.\n\nNo account, payment or API key is required. Personal lists, exceptions, settings, statistics and an installation ID stay in browser extension storage. Backups omit installation IDs, report-sharing consent and statistics; importing does not send reports.\n\nCommunity report sharing is optional and OFF by default. Firefox additionally asks for native optional data permission when you enable it. Future selected block reports contain video/channel identifiers and names, block scope and the random installation ID. Enabling sharing does not replay earlier blocks. Raw reports and moderation history expire after 90 days; a minimal hashed ignore registry can remain until resumed/deleted. Reports never automatically become community blocks.\n\nPublic GitHub list downloads and credential-free YouTube metadata requests for already blocked or allowed channels can occur while report sharing is off. No full browsing, search or watch history is uploaded.\n\nThe community lists are currently empty. Personal blocking and Google filtering work independently. Google filtering currently targets English AI Overview labels on supported google.com search pages. Google/YouTube layout changes can affect compatibility. Time-saved statistics are estimates.\n\nDesktop Firefox 142+; the same add-on also works in Zen. Android is not part of this release.\n\nPrivacy policy: https://aislopblocker-api.radu-vlad-92.workers.dev/privacy\nSupport: contact@deletecookies.dev\nSource: https://github.com/raduvlad92/AI-Slop-Blocker"
+  },
+  "categories": {
+    "firefox": [
+      "privacy-security",
+      "search-tools"
+    ]
+  },
+  "default_locale": "en-US",
+  "homepage": {
+    "en-US": "https://github.com/raduvlad92/AI-Slop-Blocker"
+  },
+  "support_email": {
+    "en-US": "contact@deletecookies.dev"
+  },
+  "requires_payment": false,
+  "is_experimental": true,
+  "is_disabled": true,
+  "version": {
+    "license": "all-rights-reserved",
+    "compatibility": [
+      "firefox"
+    ],
+    "release_notes": {
+      "en-US": "Initial Firefox/Zen release: local manual Google/YouTube filtering, portable JSON backups, Undo, Watch once, permanent allow exceptions, block-source explanations and visible community sync status."
+    },
+    "approval_notes": "No account/payment is needed. All JavaScript is packaged plain source; no bundling, obfuscation, remote code execution or AI detector. Firefox uses a Manifest V3 module event page; Chrome's service-worker manifest is generated separately and is not in this package. Storage and alarms are the only API permissions.\n\nReporting is off by default. Native optional data permission and the separate sharing toggle are both required before future selected reports are sent. Revocation stops future reporting/retries; import/export excludes identity/consent and imports do not replay reports. Public channel identity requests and GitHub list downloads are documented in the policy.\n\nTest an English Google Search that currently contains an AI Overview; ordinary results remain visible. On a YouTube watch page/Short use the AI Slop button to block a video/channel. The player overlay offers Watch once and Always allow; the confirmation offers Undo. Settings contains lists, exceptions, backups and sync status. Community lists are currently empty by design; human review and a PR are required to add entries.\n\nLocal verification: 135 Node tests, 16 DOM regressions per engine, installed extensions in Chromium/Firefox/Zen against local fixtures, and zero-warning Mozilla lint. These controlled checks do not establish all current live website layouts or signed-package restart behavior."
+  }
+}
